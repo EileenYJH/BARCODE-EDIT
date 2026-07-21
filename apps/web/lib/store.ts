@@ -1,24 +1,35 @@
 import { create } from "zustand";
-import type { Corner, BarcodeOptions, ReplaceResponse } from "./types";
+import type { Corner, BarcodeOptions, ReplaceResponse, EditorSnapshot } from "./types";
 
 interface LayerState { visible: boolean; opacity: number; }
 
 interface EditorState {
   image: string | null;
   corners: Corner[] | null;
+  detectedCorners: Corner[] | null;
+  adjusting: boolean;
   symbology: string;
   value: string;
   options: BarcodeOptions;
   blendMode: string;
   result: ReplaceResponse | null;
   layers: Record<string, LayerState>;
+  history: EditorSnapshot[];
+  historyIndex: number;
   setImage: (img: string | null) => void;
   setCorners: (c: Corner[] | null) => void;
   updateCorner: (i: number, c: Corner) => void;
+  setDetectedCorners: (c: Corner[] | null) => void;
+  setAdjusting: (v: boolean) => void;
+  moveQuad: (delta: Corner) => void;
+  resetCorners: () => void;
   setField: <K extends keyof EditorState>(k: K, v: EditorState[K]) => void;
   setOption: <K extends keyof BarcodeOptions>(k: K, v: BarcodeOptions[K]) => void;
   setResult: (r: ReplaceResponse | null) => void;
   setLayer: (name: string, patch: Partial<LayerState>) => void;
+  commit: () => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 const defaultLayers = {
@@ -27,16 +38,24 @@ const defaultLayers = {
   result: { visible: true, opacity: 1 },
 };
 
-export const useEditor = create<EditorState>((set) => ({
+export const useEditor = create<EditorState>((set, get) => ({
   image: null,
   corners: null,
+  detectedCorners: null,
+  adjusting: true,
   symbology: "code128",
   value: "",
   options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
   blendMode: "normal",
   result: null,
   layers: defaultLayers,
-  setImage: (img) => set({ image: img, corners: null, result: null }),
+  history: [],
+  historyIndex: -1,
+  setImage: (img) => set({
+    image: img, corners: null, result: null,
+    detectedCorners: null, adjusting: true,
+    history: [], historyIndex: -1,
+  }),
   setCorners: (c) => set({ corners: c }),
   updateCorner: (i, c) => set((s) => {
     if (!s.corners) return s;
@@ -44,10 +63,44 @@ export const useEditor = create<EditorState>((set) => ({
     next[i] = c;
     return { corners: next };
   }),
+  setDetectedCorners: (c) => set({ detectedCorners: c }),
+  setAdjusting: (v) => set({ adjusting: v }),
+  moveQuad: (delta) => set((s) => {
+    if (!s.corners) return s;
+    const [dx, dy] = delta;
+    return { corners: s.corners.map(([x, y]) => [x + dx, y + dy] as Corner) };
+  }),
+  resetCorners: () => {
+    set((s) => (s.detectedCorners ? { corners: s.detectedCorners } : s));
+    get().commit();
+  },
   setField: (k, v) => set({ [k]: v } as Partial<EditorState>),
   setOption: (k, v) => set((s) => ({ options: { ...s.options, [k]: v } })),
   setResult: (r) => set({ result: r }),
   setLayer: (name, patch) => set((s) => ({
     layers: { ...s.layers, [name]: { ...s.layers[name], ...patch } },
   })),
+  commit: () => set((s) => {
+    const snapshot: EditorSnapshot = {
+      corners: s.corners, symbology: s.symbology, value: s.value,
+      options: s.options, blendMode: s.blendMode, result: s.result,
+      layers: s.layers,
+    };
+    const truncated = s.history.slice(0, s.historyIndex + 1);
+    const history = [...truncated, snapshot];
+    return { history, historyIndex: history.length - 1 };
+  }),
+  undo: () => set((s) => {
+    if (s.historyIndex <= 0) return s;
+    const idx = s.historyIndex - 1;
+    return { historyIndex: idx, ...s.history[idx] };
+  }),
+  redo: () => set((s) => {
+    if (s.historyIndex >= s.history.length - 1) return s;
+    const idx = s.historyIndex + 1;
+    return { historyIndex: idx, ...s.history[idx] };
+  }),
 }));
+
+export const selectCanUndo = (s: EditorState) => s.historyIndex > 0;
+export const selectCanRedo = (s: EditorState) => s.historyIndex < s.history.length - 1;
