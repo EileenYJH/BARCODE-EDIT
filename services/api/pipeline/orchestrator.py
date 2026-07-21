@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 from typing import Dict
 import numpy as np
 import cv2
-from pipeline.generate import generate_barcode, GenerateOptions, GenerateResult
-from pipeline.warp import warp_onto
+from pipeline.generate import generate_barcode_fit, GenerateOptions, GenerateResult
+from pipeline.warp import warp_onto, quad_aspect_ratio
 from pipeline.tone import match_tone
 from pipeline.blend import seamless_blend
 
@@ -24,7 +24,8 @@ class ReplaceResult:
 
 def replace_barcode(req: ReplaceRequest) -> ReplaceResult:
     h, w = req.image.shape[:2]
-    gen: GenerateResult = generate_barcode(req.symbology, req.value, req.options)
+    target_aspect = quad_aspect_ratio(req.corners)
+    gen: GenerateResult = generate_barcode_fit(req.symbology, req.value, req.options, target_aspect)
 
     warped, alpha = warp_onto(gen.bitmap, req.corners, (h, w))
 

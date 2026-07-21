@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 import numpy as np
 import cv2
@@ -73,3 +73,41 @@ def generate_barcode(symbology: str, value: str, opts: GenerateOptions) -> Gener
     if symb in _LINEAR:
         return _generate_linear(symb, value, opts)
     raise GenerateError(f"unsupported symbology: {symbology}")
+
+def generate_barcode_fit(symbology: str, value: str, opts: GenerateOptions,
+                          target_aspect: float) -> GenerateResult:
+    """Like generate_barcode, but for linear symbologies solves for the
+    module_height that makes the generated bitmap's own aspect ratio match
+    target_aspect (the real shape of the quad it will be warped onto).
+
+    Without this, the bitmap keeps whatever aspect ratio opts.module_width/
+    module_height/quiet_zone happen to produce, and warp_onto's full-bleed
+    stretch onto a differently-shaped quad squeezes bars unevenly (looks
+    denser/thinner in one direction, sometimes visibly wavy). QR is skipped:
+    it's inherently square, and its target quad's shape is already exactly
+    reproduced by the perspective warp itself.
+    """
+    symb = symbology.lower().replace("-", "")
+    if symb not in _LINEAR or target_aspect <= 0:
+        return generate_barcode(symbology, value, opts)
+
+    # module_height affects only pixel height (confirmed empirically: pixel
+    # width tracks module_width/quiet_zone only), but with a fixed additive
+    # offset (quiet-zone margins etc.), not pure proportionality. Two probes
+    # at different module_height values pin down that line exactly, so a
+    # third render lands on the target aspect ratio precisely.
+    h1, h2 = 10.0, 25.0
+    probe1 = generate_barcode(symbology, value, replace(opts, module_height=h1))
+    probe2 = generate_barcode(symbology, value, replace(opts, module_height=h2))
+    ph1, pw = probe1.bitmap.shape[:2]
+    ph2, _ = probe2.bitmap.shape[:2]
+
+    slope = (ph2 - ph1) / (h2 - h1)
+    if slope == 0:
+        return probe1  # module_height has no effect for this input; nothing to solve
+
+    intercept = ph1 - slope * h1
+    target_height_px = pw / target_aspect
+    module_height = max((target_height_px - intercept) / slope, 0.1)
+
+    return generate_barcode(symbology, value, replace(opts, module_height=module_height))

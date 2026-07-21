@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from pipeline.generate import generate_barcode, GenerateOptions, GenerateError
+from pipeline.generate import generate_barcode, generate_barcode_fit, GenerateOptions, GenerateError
 
 def test_ean13_returns_bitmap_and_svg():
     res = generate_barcode("ean13", "5901234123457", GenerateOptions())
@@ -25,3 +25,23 @@ def test_invalid_ean13_raises():
 def test_unknown_symbology_raises():
     with pytest.raises(GenerateError):
         generate_barcode("aztec", "x", GenerateOptions())
+
+def test_generate_barcode_fit_matches_target_aspect_for_linear_symbology():
+    res = generate_barcode_fit("code128", "HELLO123", GenerateOptions(), target_aspect=1.0)
+    h, w = res.bitmap.shape[:2]
+    assert w / h == pytest.approx(1.0, rel=0.02)
+
+def test_generate_barcode_fit_matches_a_different_target_aspect():
+    res = generate_barcode_fit("ean13", "5901234123457", GenerateOptions(), target_aspect=2.5)
+    h, w = res.bitmap.shape[:2]
+    assert w / h == pytest.approx(2.5, rel=0.02)
+
+def test_generate_barcode_fit_leaves_qr_square_regardless_of_target_aspect():
+    fitted = generate_barcode_fit("qr", "https://example.com", GenerateOptions(), target_aspect=3.0)
+    plain = generate_barcode("qr", "https://example.com", GenerateOptions())
+    assert fitted.bitmap.shape == plain.bitmap.shape
+
+def test_generate_barcode_fit_falls_back_on_degenerate_target_aspect():
+    res = generate_barcode_fit("code128", "HELLO123", GenerateOptions(), target_aspect=0.0)
+    plain = generate_barcode("code128", "HELLO123", GenerateOptions())
+    assert res.bitmap.shape == plain.bitmap.shape

@@ -2,6 +2,16 @@ from typing import Tuple
 import numpy as np
 import cv2
 
+def quad_aspect_ratio(corners: np.ndarray) -> float:
+    """corners: (4,2) tl,tr,br,bl. Returns width/height, each averaged across
+    both parallel edges, so a mildly skewed quad still gets a sane estimate."""
+    tl, tr, br, bl = np.asarray(corners, dtype=np.float64)
+    width = (np.linalg.norm(tr - tl) + np.linalg.norm(br - bl)) / 2
+    height = (np.linalg.norm(bl - tl) + np.linalg.norm(br - tr)) / 2
+    if height <= 0:
+        return 1.0
+    return width / height
+
 def warp_onto(barcode_bgr: np.ndarray, target_corners: np.ndarray,
               canvas_size: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray]:
     """Warp barcode so its corners map to target_corners (tl,tr,br,bl).
