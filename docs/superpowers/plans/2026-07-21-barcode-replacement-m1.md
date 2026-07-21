@@ -421,6 +421,19 @@ git commit -m "test(api): synthetic barcode scene fixture"
 
 ### Task 5: Barcode detection
 
+> **CORRECTED DURING EXECUTION (see commit 335479d):** The code below was
+> revised after TDD revealed two facts about this environment (Python 3.14,
+> OpenCV 5.0): (1) pyzbar decodes value/type reliably but returns a *degenerate
+> zero-width polygon* on composited/warped scenes — do NOT use it for corners;
+> (2) OpenCV 5's `BarcodeDetector.detectAndDecode` returns a 3-tuple and fails to
+> decode here, but `BarcodeDetector.detect()` returns `(ok, points)` with a solid
+> `(N,4,2)` quad. Final design: **corners from `detect()`, type/value from
+> pyzbar.** The detection test asserts the detected quad is at the right *location
+> and size* and decodes correctly, rather than pixel-exact corners (classical
+> detection legitimately finds the bar region, inset from the quiet zone). See
+> the committed `services/api/pipeline/detect.py` and `tests/test_detect.py` for
+> the authoritative implementation.
+
 **Files:**
 - Create: `services/api/pipeline/detect.py`
 - Create: `services/api/tests/test_detect.py`
