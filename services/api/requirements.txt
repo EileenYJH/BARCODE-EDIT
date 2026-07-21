@@ -1,0 +1,11 @@
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
+opencv-contrib-python==5.0.0.93
+pyzbar==0.1.9
+python-barcode==0.16.1
+qrcode==8.2
+pillow==12.3.0
+numpy==2.5.1
+python-multipart==0.0.32
+pytest==9.1.1
+httpx==0.28.1
