@@ -82,3 +82,43 @@ describe("history: commit/undo/redo", () => {
     expect(useEditor.getState().historyIndex).toBe(0);
   });
 });
+
+describe("placement: detectedCorners, resetCorners, moveQuad", () => {
+  beforeEach(reset);
+
+  it("resetCorners restores detectedCorners and commits once", () => {
+    useEditor.getState().setDetectedCorners([[10, 10], [20, 10], [20, 20], [10, 20]]);
+    useEditor.getState().setCorners([[15, 15], [25, 15], [25, 25], [15, 25]]);
+    useEditor.getState().resetCorners();
+    expect(useEditor.getState().corners).toEqual([[10, 10], [20, 10], [20, 20], [10, 20]]);
+    expect(useEditor.getState().history).toHaveLength(1);
+  });
+
+  it("resetCorners is a no-op when there are no detected corners", () => {
+    useEditor.getState().setCorners([[1, 1], [2, 1], [2, 2], [1, 2]]);
+    useEditor.getState().resetCorners();
+    expect(useEditor.getState().corners).toEqual([[1, 1], [2, 1], [2, 2], [1, 2]]);
+  });
+
+  it("moveQuad translates all corners by the same delta, preserving shape", () => {
+    useEditor.getState().setCorners([[10, 10], [30, 10], [30, 30], [10, 30]]);
+    useEditor.getState().moveQuad([5, -3]);
+    expect(useEditor.getState().corners).toEqual([[15, 7], [35, 7], [35, 27], [15, 27]]);
+  });
+
+  it("moveQuad is a no-op when there are no corners", () => {
+    useEditor.getState().moveQuad([5, 5]);
+    expect(useEditor.getState().corners).toBeNull();
+  });
+
+  it("setImage resets placement and history state", () => {
+    useEditor.getState().setDetectedCorners([[1, 1], [2, 1], [2, 2], [1, 2]]);
+    useEditor.getState().setAdjusting(false);
+    useEditor.getState().commit();
+    useEditor.getState().setImage("data:image/png;base64,zzz");
+    expect(useEditor.getState().detectedCorners).toBeNull();
+    expect(useEditor.getState().adjusting).toBe(true);
+    expect(useEditor.getState().history).toHaveLength(0);
+    expect(useEditor.getState().historyIndex).toBe(-1);
+  });
+});

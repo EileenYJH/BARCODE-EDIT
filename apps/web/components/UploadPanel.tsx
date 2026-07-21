@@ -5,6 +5,7 @@ import { detect } from "@/lib/api";
 export function UploadPanel() {
   const setImage = useEditor((s) => s.setImage);
   const setCorners = useEditor((s) => s.setCorners);
+  const setDetectedCorners = useEditor((s) => s.setDetectedCorners);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -17,7 +18,10 @@ export function UploadPanel() {
     setImage(dataUrl);
     try {
       const dets = await detect(dataUrl);
-      if (dets.length) setCorners(dets[0].corners);
+      if (dets.length) {
+        setCorners(dets[0].corners);
+        setDetectedCorners(dets[0].corners);
+      }
     } catch {
       /* leave corners null; user draws manually (future) */
     }
