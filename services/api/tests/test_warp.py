@@ -1,5 +1,6 @@
 import numpy as np
-from pipeline.warp import warp_onto
+import pytest
+from pipeline.warp import warp_onto, quad_aspect_ratio
 from pipeline.generate import generate_barcode, GenerateOptions
 
 def test_warp_places_barcode_within_target_quad():
@@ -12,3 +13,20 @@ def test_warp_places_barcode_within_target_quad():
     # painted pixels sit inside the target bounding box (+ small margin)
     assert xs.min() >= 95 and xs.max() <= 305
     assert ys.min() >= 75 and ys.max() <= 195
+
+def test_quad_aspect_ratio_axis_aligned_rectangle():
+    # tl, tr, br, bl of a 200x100 axis-aligned rectangle
+    corners = np.float32([[0, 0], [200, 0], [200, 100], [0, 100]])
+    assert quad_aspect_ratio(corners) == pytest.approx(2.0, rel=1e-3)
+
+def test_quad_aspect_ratio_square():
+    corners = np.float32([[10, 10], [110, 10], [110, 110], [10, 110]])
+    assert quad_aspect_ratio(corners) == pytest.approx(1.0, rel=1e-3)
+
+def test_quad_aspect_ratio_averages_skewed_edges():
+    # top edge length 100, bottom edge length 120 -> avg width 110
+    # left edge (0,0)->(-10,50) and right edge (100,0)->(110,50) are equal by
+    # symmetry, each length sqrt(10**2 + 50**2)
+    corners = np.float32([[0, 0], [100, 0], [110, 50], [-10, 50]])
+    expected_height = (10 ** 2 + 50 ** 2) ** 0.5
+    assert quad_aspect_ratio(corners) == pytest.approx(110 / expected_height, rel=1e-3)
