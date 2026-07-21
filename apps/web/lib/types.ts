@@ -20,3 +20,13 @@ export interface ReplaceResponse {
   svg: string;
   layers: Record<"original" | "new_barcode" | "mask", string>;
 }
+
+export interface EditorSnapshot {
+  corners: Corner[] | null;
+  symbology: string;
+  value: string;
+  options: BarcodeOptions;
+  blendMode: string;
+  result: ReplaceResponse | null;
+  layers: Record<string, { visible: boolean; opacity: number }>;
+}
