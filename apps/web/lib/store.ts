@@ -1,9 +1,12 @@
 import { create } from "zustand";
 import type { Corner, BarcodeOptions, ReplaceResponse, EditorSnapshot, ActiveLayer, Stroke } from "./types";
+import { offsetTextQuad } from "./transform";
 
 interface EditorState {
   image: string | null;
   corners: Corner[] | null;
+  textCorners: Corner[] | null;
+  separateTextPlacement: boolean;
   detectedCorners: Corner[] | null;
   adjusting: boolean;
   retouching: boolean;
@@ -24,6 +27,10 @@ interface EditorState {
   setImage: (img: string | null) => void;
   setCorners: (c: Corner[] | null) => void;
   updateCorner: (i: number, c: Corner) => void;
+  setTextCorners: (c: Corner[] | null) => void;
+  updateTextCorner: (i: number, c: Corner) => void;
+  moveTextQuad: (delta: Corner) => void;
+  setSeparateTextPlacement: (v: boolean) => void;
   setDetectedCorners: (c: Corner[] | null) => void;
   setAdjusting: (v: boolean) => void;
   setRetouching: (v: boolean) => void;
@@ -46,6 +53,8 @@ interface EditorState {
 export const useEditor = create<EditorState>((set, get) => ({
   image: null,
   corners: null,
+  textCorners: null,
+  separateTextPlacement: false,
   detectedCorners: null,
   adjusting: true,
   retouching: false,
@@ -65,6 +74,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   historyIndex: -1,
   setImage: (img) => set({
     image: img, corners: null, result: null,
+    textCorners: null, separateTextPlacement: false,
     detectedCorners: null, adjusting: true, retouching: false,
     retouchStrokes: [], resultMaskStrokes: [],
     history: [], historyIndex: -1,
@@ -75,6 +85,24 @@ export const useEditor = create<EditorState>((set, get) => ({
     const next = s.corners.slice();
     next[i] = c;
     return { corners: next };
+  }),
+  setTextCorners: (c) => set({ textCorners: c }),
+  updateTextCorner: (i, c) => set((s) => {
+    if (!s.textCorners) return s;
+    const next = s.textCorners.slice();
+    next[i] = c;
+    return { textCorners: next };
+  }),
+  moveTextQuad: (delta) => set((s) => {
+    if (!s.textCorners) return s;
+    const [dx, dy] = delta;
+    return { textCorners: s.textCorners.map(([x, y]) => [x + dx, y + dy] as Corner) };
+  }),
+  setSeparateTextPlacement: (v) => set((s) => {
+    if (v && !s.textCorners && s.corners) {
+      return { separateTextPlacement: true, textCorners: offsetTextQuad(s.corners) };
+    }
+    return { separateTextPlacement: v };
   }),
   setDetectedCorners: (c) => set({ detectedCorners: c }),
   setAdjusting: (v) => set(v ? { adjusting: true, retouching: false } : { adjusting: false }),
@@ -109,7 +137,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setResult: (r) => set({ result: r }),
   commit: () => set((s) => {
     const snapshot: EditorSnapshot = {
-      corners: s.corners, symbology: s.symbology, value: s.value,
+      corners: s.corners, textCorners: s.textCorners, symbology: s.symbology, value: s.value,
       options: s.options, blendMode: s.blendMode, result: s.result,
       retouchStrokes: s.retouchStrokes, resultMaskStrokes: s.resultMaskStrokes,
     };

@@ -5,6 +5,8 @@ function reset() {
   useEditor.setState({
     image: null,
     corners: null,
+    textCorners: null,
+    separateTextPlacement: false,
     detectedCorners: null,
     adjusting: true,
     retouching: false,
@@ -189,5 +191,39 @@ describe("retouching: mode, strokes, mutual exclusion", () => {
     expect(useEditor.getState().retouching).toBe(false);
     expect(useEditor.getState().retouchStrokes).toEqual([]);
     expect(useEditor.getState().resultMaskStrokes).toEqual([]);
+  });
+});
+
+describe("separate text placement", () => {
+  beforeEach(reset);
+
+  it("turning it on with no existing text quad auto-offsets below the bars quad", () => {
+    useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setSeparateTextPlacement(true);
+    expect(useEditor.getState().separateTextPlacement).toBe(true);
+    expect(useEditor.getState().textCorners).toEqual([[0, 50], [200, 50], [200, 70], [0, 70]]);
+  });
+
+  it("turning it on again does not overwrite an already-adjusted text quad", () => {
+    useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setSeparateTextPlacement(true);
+    useEditor.getState().setTextCorners([[10, 60], [210, 60], [210, 80], [10, 80]]);
+    useEditor.getState().setSeparateTextPlacement(false);
+    useEditor.getState().setSeparateTextPlacement(true);
+    expect(useEditor.getState().textCorners).toEqual([[10, 60], [210, 60], [210, 80], [10, 80]]);
+  });
+
+  it("moveTextQuad translates all text corners by the same delta", () => {
+    useEditor.getState().setTextCorners([[10, 10], [30, 10], [30, 30], [10, 30]]);
+    useEditor.getState().moveTextQuad([5, -3]);
+    expect(useEditor.getState().textCorners).toEqual([[15, 7], [35, 7], [35, 27], [15, 27]]);
+  });
+
+  it("setImage resets text placement state", () => {
+    useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setSeparateTextPlacement(true);
+    useEditor.getState().setImage("data:image/png;base64,zzz");
+    expect(useEditor.getState().textCorners).toBeNull();
+    expect(useEditor.getState().separateTextPlacement).toBe(false);
   });
 });
