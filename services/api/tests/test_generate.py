@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from pipeline.generate import generate_barcode, generate_barcode_fit, GenerateOptions, GenerateError
+from pipeline.generate import generate_barcode, generate_barcode_fit, generate_barcode_split, GenerateOptions, GenerateError
 
 def test_ean13_returns_bitmap_and_svg():
     res = generate_barcode("ean13", "5901234123457", GenerateOptions())
@@ -94,6 +94,24 @@ def test_bars_are_rendered_above_the_librarys_bare_default_resolution():
     changes = np.where(np.diff(row) != 0)[0]
     run_lengths = np.diff(np.concatenate([[0], changes, [len(row) - 1]]))
     assert run_lengths.min() >= 3
+
+def test_generate_barcode_split_returns_bars_and_text_bitmaps_separately():
+    full, bars, text = generate_barcode_split("code128", "HELLO123", GenerateOptions(show_text=True), target_aspect=2.5)
+    assert text is not None
+    assert bars.shape[1] == full.bitmap.shape[1]  # same width
+    assert text.shape[1] == full.bitmap.shape[1]
+    assert bars.shape[0] + text.shape[0] == full.bitmap.shape[0]
+    assert (text < 200).any()  # the rendered text itself
+
+def test_generate_barcode_split_returns_none_text_when_show_text_is_off():
+    full, bars, text = generate_barcode_split("code128", "HELLO123", GenerateOptions(show_text=False), target_aspect=2.5)
+    assert text is None
+    assert bars.shape == full.bitmap.shape
+
+def test_generate_barcode_split_returns_none_text_for_qr():
+    full, bars, text = generate_barcode_split("qr", "https://example.com", GenerateOptions(show_text=True), target_aspect=1.0)
+    assert text is None
+    assert bars.shape == full.bitmap.shape
 
 def test_font_size_is_capped_for_very_large_module_height():
     mid = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=True))
