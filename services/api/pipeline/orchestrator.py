@@ -3,7 +3,7 @@ from typing import Dict
 import numpy as np
 import cv2
 from pipeline.generate import generate_barcode_fit, GenerateOptions, GenerateResult
-from pipeline.warp import warp_onto, quad_aspect_ratio
+from pipeline.warp import warp_onto, quad_aspect_ratio, quad_dimensions
 from pipeline.tone import match_tone
 from pipeline.blend import seamless_blend, local_tone_correct
 
@@ -25,7 +25,9 @@ class ReplaceResult:
 def replace_barcode(req: ReplaceRequest) -> ReplaceResult:
     h, w = req.image.shape[:2]
     target_aspect = quad_aspect_ratio(req.corners)
-    gen: GenerateResult = generate_barcode_fit(req.symbology, req.value, req.options, target_aspect)
+    target_width_px, _ = quad_dimensions(req.corners)
+    gen: GenerateResult = generate_barcode_fit(req.symbology, req.value, req.options,
+                                                target_aspect, target_width_px=target_width_px)
 
     warped, alpha = warp_onto(gen.bitmap, req.corners, (h, w))
 

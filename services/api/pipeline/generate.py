@@ -25,6 +25,8 @@ class GenerateResult:
 
 _LINEAR = {"ean13": "ean13", "ean8": "ean8", "upca": "upca",
            "code128": "code128", "code39": "code39"}
+_RENDER_DPI = 450  # 1.5x python-barcode's ImageWriter default (300); a floor
+                    # for callers that don't know the eventual placement size
 
 def _pil_to_bgr(img: Image.Image) -> np.ndarray:
     rgb = np.array(img.convert("RGB"))
@@ -41,14 +43,23 @@ def _proportional_font_size(module_height: float) -> float:
     """
     return max(6.0, min(14.0, 10.0 * module_height / 15.0))
 
-def _generate_linear(symb: str, value: str, opts: GenerateOptions) -> GenerateResult:
+def _generate_linear(symb: str, value: str, opts: GenerateOptions, dpi: float = _RENDER_DPI) -> GenerateResult:
     try:
         cls = barcode.get_barcode_class(_LINEAR[symb])
     except Exception as e:
         raise GenerateError(str(e))
+    # dpi (not module_width/height/quiet_zone) is how callers rescale pixel
+    # resolution: it scales the whole rendered page uniformly, including
+    # text, without touching any of the mm-based options that
+    # _proportional_font_size and the aspect-fit solve above are tuned
+    # against. Rescaling module_width/height/quiet_zone directly instead
+    # would shift module_height into a different font-size clamping regime
+    # than what the aspect-fit solve assumed, throwing off the exact aspect
+    # ratio it just solved for (confirmed: this broke an aspect-ratio test).
     common = {"write_text": opts.show_text, "quiet_zone": opts.quiet_zone,
               "module_width": opts.module_width, "module_height": opts.module_height,
-              "font_size": _proportional_font_size(opts.module_height)}
+              "font_size": _proportional_font_size(opts.module_height),
+              "dpi": dpi}
     try:
         png_buf = BytesIO()
         obj = cls(value, writer=ImageWriter())
@@ -87,7 +98,8 @@ def generate_barcode(symbology: str, value: str, opts: GenerateOptions) -> Gener
     raise GenerateError(f"unsupported symbology: {symbology}")
 
 def generate_barcode_fit(symbology: str, value: str, opts: GenerateOptions,
-                          target_aspect: float) -> GenerateResult:
+                          target_aspect: float,
+                          target_width_px: float = None) -> GenerateResult:
     """Like generate_barcode, but for linear symbologies solves for the
     module_height that makes the generated bitmap's own aspect ratio match
     target_aspect (the real shape of the quad it will be warped onto).
@@ -98,6 +110,15 @@ def generate_barcode_fit(symbology: str, value: str, opts: GenerateOptions,
     denser/thinner in one direction, sometimes visibly wavy). QR is skipped:
     it's inherently square, and its target quad's shape is already exactly
     reproduced by the perspective warp itself.
+
+    target_width_px, if given (the actual on-photo placement's pixel width),
+    additionally rescales the bitmap to roughly match that size with modest
+    headroom. A fixed oversample factor can't work for every placement: too
+    small relative to a large close-up blurs on the upscale, too large
+    relative to a small placement forces an extreme downscale that aliases
+    the bars' fine periodic pattern badly enough to break scanning entirely
+    (confirmed empirically). Scaling relative to the actual target keeps the
+    eventual warp a mild up- or down-scale either way.
     """
     symb = symbology.lower().replace("-", "")
     if symb not in _LINEAR or target_aspect <= 0:
@@ -131,4 +152,15 @@ def generate_barcode_fit(symbology: str, value: str, opts: GenerateOptions,
     elif module_height > UNCLAMPED_HI:
         module_height = solve(25.0, 40.0)  # re-probe entirely inside the clamped-high regime
 
-    return generate_barcode(symbology, value, replace(opts, module_height=module_height))
+    fitted_opts = replace(opts, module_height=module_height)
+    result = _generate_linear(symb, value, fitted_opts)
+
+    if target_width_px and target_width_px > 0:
+        bw = result.bitmap.shape[1]
+        oversample = 1.5  # headroom above the target so the eventual warp
+                           # is a mild upscale at worst, never a big one
+        scale = (target_width_px * oversample) / bw
+        if abs(scale - 1.0) > 0.05:
+            result = _generate_linear(symb, value, fitted_opts, dpi=_RENDER_DPI * scale)
+
+    return result
