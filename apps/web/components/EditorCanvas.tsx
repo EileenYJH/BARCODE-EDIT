@@ -10,6 +10,7 @@ interface DragStart {
   corners: Corner[];
   center: Corner;
   startValue: number; // distance-from-center for scale, angle-from-center for rotate
+  referenceDist: number; // scale only: average corner-to-center distance, used to normalize sensitivity
 }
 
 export function EditorCanvas() {
@@ -43,16 +44,25 @@ export function EditorCanvas() {
     if (!corners) return;
     const center = quadCenter(corners);
     const pos = e.target.getAbsolutePosition();
-    const startValue = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale) || 1;
-    dragStart.current = { corners, center, startValue };
+    const startValue = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale);
+    // Average corner-to-center distance, not the handle's own (possibly small)
+    // starting distance -- an edge-midpoint handle can sit close to center on a
+    // wide/short quad, and dividing by that tiny distance turned small mouse
+    // movements into huge scale swings. This is a stable denominator instead.
+    const referenceDist = corners.reduce(
+      (sum, c) => sum + Math.hypot(c[0] - center[0], c[1] - center[1]), 0
+    ) / corners.length || 1;
+    dragStart.current = { corners, center, startValue, referenceDist };
   }
 
   function handleScaleDragMove(e: Konva.KonvaEventObject<DragEvent>) {
     if (!dragStart.current) return;
-    const { corners: startCorners, center, startValue } = dragStart.current;
+    const { corners: startCorners, center, startValue, referenceDist } = dragStart.current;
     const pos = e.target.getAbsolutePosition();
     const currentDist = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale);
-    setCorners(scaleQuad(startCorners, currentDist / startValue));
+    const deltaImageSpace = (currentDist - startValue) / scale;
+    const factor = Math.max(0.05, 1 + deltaImageSpace / referenceDist);
+    setCorners(scaleQuad(startCorners, factor));
   }
 
   function handleTransformDragEnd() {
@@ -65,7 +75,7 @@ export function EditorCanvas() {
     const center = quadCenter(corners);
     const pos = e.target.getAbsolutePosition();
     const startValue = Math.atan2(pos.y - center[1] * scale, pos.x - center[0] * scale);
-    dragStart.current = { corners, center, startValue };
+    dragStart.current = { corners, center, startValue, referenceDist: 1 }; // unused for rotate
   }
 
   function handleRotateDragMove(e: Konva.KonvaEventObject<DragEvent>) {
