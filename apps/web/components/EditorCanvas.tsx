@@ -23,13 +23,14 @@ interface QuadTransformBoxProps {
   corners: Corner[];
   scale: number;
   color: string;
+  resizable?: boolean;
   onUpdateCorner: (i: number, c: Corner) => void;
   onMoveQuad: (delta: Corner) => void;
   onSetCorners: (c: Corner[]) => void;
   onCommit: () => void;
 }
 
-function QuadTransformBox({ corners, scale, color, onUpdateCorner, onMoveQuad, onSetCorners, onCommit }: QuadTransformBoxProps) {
+function QuadTransformBox({ corners, scale, color, resizable = true, onUpdateCorner, onMoveQuad, onSetCorners, onCommit }: QuadTransformBoxProps) {
   const dragStart = useRef<DragStart | null>(null);
   const flat = corners.flatMap((c) => [c[0] * scale, c[1] * scale]);
 
@@ -106,13 +107,13 @@ function QuadTransformBox({ corners, scale, color, onUpdateCorner, onMoveQuad, o
         onDragMove={handleQuadDragMove}
         onDragEnd={() => onCommit()}
       />
-      {corners.map((c, i) => (
+      {resizable && corners.map((c, i) => (
         <Circle key={i} x={c[0] * scale} y={c[1] * scale} radius={7}
                 fill={color} draggable
                 onDragMove={(e) => onUpdateCorner(i, [e.target.x() / scale, e.target.y() / scale])}
                 onDragEnd={() => onCommit()} />
       ))}
-      {edgeMidpoints.map((m, i) => (
+      {resizable && edgeMidpoints.map((m, i) => (
         <Rect key={`scale-${i}`} x={m[0] * scale - 5} y={m[1] * scale - 5} width={10} height={10}
               fill="#f97316" draggable
               onDragStart={handleScaleDragStart}
@@ -157,7 +158,7 @@ export function EditorCanvas() {
             onUpdateCorner={updateCorner} onMoveQuad={moveQuad} onSetCorners={setCorners} onCommit={commit} />
         )}
         {textCorners && separateTextPlacement && adjusting && (
-          <QuadTransformBox corners={textCorners} scale={scale} color="#a855f7"
+          <QuadTransformBox corners={textCorners} scale={scale} color="#a855f7" resizable={false}
             onUpdateCorner={updateTextCorner} onMoveQuad={moveTextQuad} onSetCorners={setTextCorners} onCommit={commit} />
         )}
       </Layer>
