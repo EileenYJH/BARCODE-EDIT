@@ -14,6 +14,7 @@ function reset() {
     historyIndex: -1,
     separateTextPlacement: false,
     textCorners: null,
+    options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15, text_font_scale: 1 },
   });
 }
 
@@ -48,11 +49,12 @@ describe("AdjustPanel", () => {
     expect(screen.queryByRole("button", { name: /confirm/i })).toBeNull();
   });
 
-  it("shows a second placement grid for text corners when separateTextPlacement is on", () => {
-    useEditor.setState({ separateTextPlacement: true, textCorners: [[1, 1], [2, 1], [2, 2], [1, 2]] });
+  it("shows center X/Y, rotation, and text-size inputs when separateTextPlacement is on", () => {
+    useEditor.setState({ separateTextPlacement: true, textCorners: [[0, 0], [100, 0], [100, 40], [0, 40]] });
     render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
     const inputs = screen.getAllByRole("spinbutton");
-    expect(inputs).toHaveLength(16); // 4 bars corners + 4 text corners, x2 each
+    // 4 bars corners x2 (8) + center X, center Y, rotation, text size (4) = 12
+    expect(inputs).toHaveLength(12);
   });
 
   it("hides the text placement grid when separateTextPlacement is off", () => {
@@ -62,12 +64,31 @@ describe("AdjustPanel", () => {
     expect(inputs).toHaveLength(8);
   });
 
-  it("editing a text corner input updates textCorners", () => {
-    useEditor.setState({ separateTextPlacement: true, textCorners: [[1, 1], [2, 1], [2, 2], [1, 2]] });
+  it("editing the text center X input moves the text quad", () => {
+    useEditor.setState({ separateTextPlacement: true, textCorners: [[0, 0], [100, 0], [100, 40], [0, 40]] });
     render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
     const inputs = screen.getAllByRole("spinbutton");
-    fireEvent.change(inputs[8], { target: { value: "50" } }); // first text-corner input
-    expect(useEditor.getState().textCorners![0][0]).toBe(50);
+    fireEvent.change(inputs[8], { target: { value: "60" } }); // center X, first text input
+    // center was [50, 20]; moving center X to 60 shifts every corner +10 in x
+    expect(useEditor.getState().textCorners).toEqual([[10, 0], [110, 0], [110, 40], [10, 40]]);
+  });
+
+  it("editing the text rotation input rotates the text quad in place", () => {
+    useEditor.setState({ separateTextPlacement: true, textCorners: [[0, 0], [100, 0], [100, 40], [0, 40]] });
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    const inputs = screen.getAllByRole("spinbutton");
+    fireEvent.change(inputs[10], { target: { value: "90" } }); // rotation input
+    const [tl, tr] = useEditor.getState().textCorners!;
+    // after a 90-degree rotation the top edge should now point roughly vertically
+    expect(Math.abs(tr[0] - tl[0])).toBeLessThan(1);
+  });
+
+  it("editing the text size input calls setTextFontScale", () => {
+    useEditor.setState({ separateTextPlacement: true, textCorners: [[0, 0], [100, 0], [100, 40], [0, 40]] });
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    const inputs = screen.getAllByRole("spinbutton");
+    fireEvent.change(inputs[11], { target: { value: "150" } }); // text size, %
+    expect(useEditor.getState().options.text_font_scale).toBe(1.5);
   });
 
   it("Straighten button snaps a skewed bars quad to a rectangle and commits", () => {
@@ -89,18 +110,5 @@ describe("AdjustPanel", () => {
   it("only one Straighten button shows when separate text placement is off", () => {
     render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
     expect(screen.getAllByRole("button", { name: /straighten/i })).toHaveLength(1);
-  });
-
-  it("a second Straighten button snaps the text quad when separate text placement is on", () => {
-    useEditor.setState({ separateTextPlacement: true, textCorners: [[10, 10], [90, 15], [85, 40], [5, 35]] });
-    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
-    const buttons = screen.getAllByRole("button", { name: /straighten/i });
-    expect(buttons).toHaveLength(2);
-    fireEvent.click(buttons[1]);
-
-    const [tl, tr, br, bl] = useEditor.getState().textCorners!;
-    const topVec = [tr[0] - tl[0], tr[1] - tl[1]];
-    const leftVec = [bl[0] - tl[0], bl[1] - tl[1]];
-    expect(topVec[0] * leftVec[0] + topVec[1] * leftVec[1]).toBeCloseTo(0, 3); // right angle
   });
 });
