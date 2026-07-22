@@ -19,6 +19,7 @@ export async function replace(params: {
   value: string;
   options: BarcodeOptions;
   blend_mode: string;
+  text_corners?: number[][];
 }): Promise<ReplaceResponse> {
   const r = await fetch(`${BASE}/api/replace`, {
     method: "POST",
