@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Stage, Layer, Image as KImage, Line, Circle, Rect } from "react-konva";
 import type Konva from "konva";
 import { useEditor } from "@/lib/store";
-import { quadCenter, scaleQuad, rotateQuad } from "@/lib/transform";
+import { quadCenter, scaleQuad, rotateQuad, scaleFactorFromDrag, straightenQuad } from "@/lib/transform";
 import type { Corner } from "@/lib/types";
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -17,7 +17,6 @@ interface DragStart {
   corners: Corner[];
   center: Corner;
   startValue: number; // distance-from-center for scale, angle-from-center for rotate
-  referenceDist: number; // scale only: average corner-to-center distance, used to normalize sensitivity
 }
 
 interface QuadTransformBoxProps {
@@ -45,24 +44,21 @@ function QuadTransformBox({ corners, scale, color, onUpdateCorner, onMoveQuad, o
   function handleScaleDragStart(e: Konva.KonvaEventObject<DragEvent>) {
     const center = quadCenter(corners);
     const pos = e.target.getAbsolutePosition();
+    // Canvas-space (screen pixel) distance, not divided by the display
+    // scale or normalized against the quad's own size -- sensitivity should
+    // feel the same regardless of the photo's resolution or how small/large
+    // the box being scaled is. See scaleFactorFromDrag's own comment for
+    // why the previous size/resolution-dependent version was the bug.
     const startValue = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale);
-    // Average corner-to-center distance, not the handle's own (possibly small)
-    // starting distance -- an edge-midpoint handle can sit close to center on a
-    // wide/short quad, and dividing by that tiny distance turned small mouse
-    // movements into huge scale swings. This is a stable denominator instead.
-    const referenceDist = corners.reduce(
-      (sum, c) => sum + Math.hypot(c[0] - center[0], c[1] - center[1]), 0
-    ) / corners.length || 1;
-    dragStart.current = { corners, center, startValue, referenceDist };
+    dragStart.current = { corners, center, startValue };
   }
 
   function handleScaleDragMove(e: Konva.KonvaEventObject<DragEvent>) {
     if (!dragStart.current) return;
-    const { corners: startCorners, center, startValue, referenceDist } = dragStart.current;
+    const { corners: startCorners, center, startValue } = dragStart.current;
     const pos = e.target.getAbsolutePosition();
     const currentDist = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale);
-    const deltaImageSpace = (currentDist - startValue) / scale;
-    const factor = Math.max(0.05, 1 + deltaImageSpace / referenceDist);
+    const factor = scaleFactorFromDrag(currentDist - startValue);
     onSetCorners(scaleQuad(startCorners, factor));
   }
 
@@ -75,7 +71,7 @@ function QuadTransformBox({ corners, scale, color, onUpdateCorner, onMoveQuad, o
     const center = quadCenter(corners);
     const pos = e.target.getAbsolutePosition();
     const startValue = Math.atan2(pos.y - center[1] * scale, pos.x - center[0] * scale);
-    dragStart.current = { corners, center, startValue, referenceDist: 1 }; // unused for rotate
+    dragStart.current = { corners, center, startValue };
   }
 
   function handleRotateDragMove(e: Konva.KonvaEventObject<DragEvent>) {

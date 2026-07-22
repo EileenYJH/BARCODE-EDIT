@@ -3,6 +3,7 @@ import { useEditor } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { straightenQuad } from "@/lib/transform";
 import type { Corner } from "@/lib/types";
 
 interface AdjustPanelProps {
@@ -13,7 +14,7 @@ interface AdjustPanelProps {
 export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
   const {
     corners, detectedCorners, adjusting, result, updateCorner, commit, resetCorners,
-    textCorners, separateTextPlacement, updateTextCorner,
+    textCorners, separateTextPlacement, updateTextCorner, setCorners, setTextCorners,
   } = useEditor();
 
   if (!adjusting || !corners) return null;
@@ -34,6 +35,16 @@ export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
     updateTextCorner(i, c);
   }
 
+  function straightenBars() {
+    setCorners(straightenQuad(corners!));
+    commit();
+  }
+
+  function straightenText() {
+    setTextCorners(straightenQuad(textCorners!));
+    commit();
+  }
+
   return (
     <div className="space-y-3">
       <Label>Placement</Label>
@@ -49,6 +60,9 @@ export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
           </div>
         ))}
       </div>
+      <Button variant="outline" size="sm" onClick={straightenBars}>
+        Straighten
+      </Button>
       {separateTextPlacement && textCorners && (
         <>
           <Label>Value text placement</Label>
@@ -64,6 +78,9 @@ export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
               </div>
             ))}
           </div>
+          <Button variant="outline" size="sm" onClick={straightenText}>
+            Straighten
+          </Button>
         </>
       )}
       <div className="flex gap-2">

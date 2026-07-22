@@ -69,4 +69,38 @@ describe("AdjustPanel", () => {
     fireEvent.change(inputs[8], { target: { value: "50" } }); // first text-corner input
     expect(useEditor.getState().textCorners![0][0]).toBe(50);
   });
+
+  it("Straighten button snaps a skewed bars quad to a rectangle and commits", () => {
+    useEditor.setState({ corners: [[20, 10], [100, 15], [95, 60], [15, 55]] });
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    fireEvent.click(screen.getAllByRole("button", { name: /straighten/i })[0]);
+
+    const [tl, tr, br, bl] = useEditor.getState().corners!;
+    const topLen = Math.hypot(tr[0] - tl[0], tr[1] - tl[1]);
+    const leftLen = Math.hypot(bl[0] - tl[0], bl[1] - tl[1]);
+    const topVec = [tr[0] - tl[0], tr[1] - tl[1]];
+    const leftVec = [bl[0] - tl[0], bl[1] - tl[1]];
+    expect(topVec[0] * leftVec[0] + topVec[1] * leftVec[1]).toBeCloseTo(0, 3); // right angle
+    expect(topLen).toBeGreaterThan(0);
+    expect(leftLen).toBeGreaterThan(0);
+    expect(useEditor.getState().history).toHaveLength(1);
+  });
+
+  it("only one Straighten button shows when separate text placement is off", () => {
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    expect(screen.getAllByRole("button", { name: /straighten/i })).toHaveLength(1);
+  });
+
+  it("a second Straighten button snaps the text quad when separate text placement is on", () => {
+    useEditor.setState({ separateTextPlacement: true, textCorners: [[10, 10], [90, 15], [85, 40], [5, 35]] });
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    const buttons = screen.getAllByRole("button", { name: /straighten/i });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[1]);
+
+    const [tl, tr, br, bl] = useEditor.getState().textCorners!;
+    const topVec = [tr[0] - tl[0], tr[1] - tl[1]];
+    const leftVec = [bl[0] - tl[0], bl[1] - tl[1]];
+    expect(topVec[0] * leftVec[0] + topVec[1] * leftVec[1]).toBeCloseTo(0, 3); // right angle
+  });
 });
