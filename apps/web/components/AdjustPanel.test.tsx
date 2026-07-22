@@ -12,6 +12,8 @@ function reset() {
     result: null,
     history: [],
     historyIndex: -1,
+    separateTextPlacement: false,
+    textCorners: null,
   });
 }
 
@@ -44,5 +46,27 @@ describe("AdjustPanel", () => {
   it("Confirm button is absent before any result exists", () => {
     render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
     expect(screen.queryByRole("button", { name: /confirm/i })).toBeNull();
+  });
+
+  it("shows a second placement grid for text corners when separateTextPlacement is on", () => {
+    useEditor.setState({ separateTextPlacement: true, textCorners: [[1, 1], [2, 1], [2, 2], [1, 2]] });
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    const inputs = screen.getAllByRole("spinbutton");
+    expect(inputs).toHaveLength(16); // 4 bars corners + 4 text corners, x2 each
+  });
+
+  it("hides the text placement grid when separateTextPlacement is off", () => {
+    useEditor.setState({ separateTextPlacement: false, textCorners: null });
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    const inputs = screen.getAllByRole("spinbutton");
+    expect(inputs).toHaveLength(8);
+  });
+
+  it("editing a text corner input updates textCorners", () => {
+    useEditor.setState({ separateTextPlacement: true, textCorners: [[1, 1], [2, 1], [2, 2], [1, 2]] });
+    render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
+    const inputs = screen.getAllByRole("spinbutton");
+    fireEvent.change(inputs[8], { target: { value: "50" } }); // first text-corner input
+    expect(useEditor.getState().textCorners![0][0]).toBe(50);
   });
 });

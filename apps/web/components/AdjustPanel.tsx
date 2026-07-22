@@ -11,7 +11,10 @@ interface AdjustPanelProps {
 }
 
 export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
-  const { corners, detectedCorners, adjusting, result, updateCorner, commit, resetCorners } = useEditor();
+  const {
+    corners, detectedCorners, adjusting, result, updateCorner, commit, resetCorners,
+    textCorners, separateTextPlacement, updateTextCorner,
+  } = useEditor();
 
   if (!adjusting || !corners) return null;
 
@@ -21,6 +24,14 @@ export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
     const c: Corner = [...corners![i]] as Corner;
     c[axis] = n;
     updateCorner(i, c);
+  }
+
+  function handleTextNumberChange(i: number, axis: 0 | 1, raw: string) {
+    const n = Number(raw);
+    if (Number.isNaN(n)) return;
+    const c: Corner = [...textCorners![i]] as Corner;
+    c[axis] = n;
+    updateTextCorner(i, c);
   }
 
   return (
@@ -38,6 +49,23 @@ export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
           </div>
         ))}
       </div>
+      {separateTextPlacement && textCorners && (
+        <>
+          <Label>Value text placement</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {textCorners.map((c, i) => (
+              <div key={i} className="contents">
+                <Input type="number" value={c[0]}
+                       onChange={(e) => handleTextNumberChange(i, 0, e.target.value)}
+                       onBlur={() => commit()} />
+                <Input type="number" value={c[1]}
+                       onChange={(e) => handleTextNumberChange(i, 1, e.target.value)}
+                       onBlur={() => commit()} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <div className="flex gap-2">
         {detectedCorners && (
           <Button variant="outline" size="sm" onClick={resetCorners}>
