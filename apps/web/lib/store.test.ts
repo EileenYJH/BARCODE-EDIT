@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useEditor, selectCanUndo, selectCanRedo } from "./store";
+import { quadRotation } from "./transform";
 
 function reset() {
   useEditor.setState({
@@ -278,6 +279,18 @@ describe("separate text placement", () => {
 
   it("moveTextQuad is a no-op when there are no text corners", () => {
     useEditor.getState().moveTextQuad([5, 5]);
+    expect(useEditor.getState().textCorners).toBeNull();
+  });
+
+  it("rotateTextQuad rotates the text quad around its own center by the given delta", () => {
+    useEditor.getState().setTextCorners([[0, 0], [100, 0], [100, 50], [0, 50]]);
+    useEditor.getState().rotateTextQuad(Math.PI / 2);
+    const corners = useEditor.getState().textCorners!;
+    expect(quadRotation(corners)).toBeCloseTo(Math.PI / 2, 5);
+  });
+
+  it("rotateTextQuad is a no-op when there are no text corners", () => {
+    useEditor.getState().rotateTextQuad(0.5);
     expect(useEditor.getState().textCorners).toBeNull();
   });
 

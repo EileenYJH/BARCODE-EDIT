@@ -73,14 +73,18 @@ describe("AdjustPanel", () => {
     expect(useEditor.getState().textCorners).toEqual([[10, 0], [110, 0], [110, 40], [10, 40]]);
   });
 
-  it("editing the text rotation input rotates the text quad in place", () => {
+  it("editing the text rotation input rotates the text quad exactly by the specified angle", () => {
     useEditor.setState({ separateTextPlacement: true, textCorners: [[0, 0], [100, 0], [100, 40], [0, 40]] });
     render(<AdjustPanel onConfirm={() => {}} isPending={false} />);
     const inputs = screen.getAllByRole("spinbutton");
     fireEvent.change(inputs[10], { target: { value: "90" } }); // rotation input
-    const [tl, tr] = useEditor.getState().textCorners!;
-    // after a 90-degree rotation the top edge should now point roughly vertically
-    expect(Math.abs(tr[0] - tl[0])).toBeLessThan(1);
+    const corners = useEditor.getState().textCorners!;
+    // center is [50, 20]; rotating +90 degrees around it via the same
+    // rotation-matrix convention rotateQuad uses
+    expect(corners[0][0]).toBeCloseTo(70, 1);
+    expect(corners[0][1]).toBeCloseTo(-30, 1);
+    expect(corners[1][0]).toBeCloseTo(70, 1);
+    expect(corners[1][1]).toBeCloseTo(70, 1);
   });
 
   it("editing the text size input calls setTextFontScale", () => {

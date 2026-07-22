@@ -3,7 +3,7 @@ import { useEditor } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { straightenQuad, quadCenter, quadRotation, rotateQuad } from "@/lib/transform";
+import { straightenQuad, quadCenter, quadRotation } from "@/lib/transform";
 import type { Corner } from "@/lib/types";
 
 interface AdjustPanelProps {
@@ -14,7 +14,7 @@ interface AdjustPanelProps {
 export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
   const {
     corners, detectedCorners, adjusting, result, updateCorner, commit, resetCorners,
-    textCorners, separateTextPlacement, options, moveTextQuad, setTextCorners, setTextFontScale,
+    textCorners, separateTextPlacement, options, moveTextQuad, rotateTextQuad, setTextFontScale,
     setCorners,
   } = useEditor();
 
@@ -41,7 +41,7 @@ export function AdjustPanel({ onConfirm, isPending }: AdjustPanelProps) {
     if (Number.isNaN(n)) return;
     const targetRad = (n * Math.PI) / 180;
     const currentRad = quadRotation(textCorners!);
-    setTextCorners(rotateQuad(textCorners!, targetRad - currentRad));
+    rotateTextQuad(targetRad - currentRad);
   }
 
   function handleTextFontScaleChange(raw: string) {

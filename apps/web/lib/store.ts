@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Corner, BarcodeOptions, ReplaceResponse, EditorSnapshot, ActiveLayer, Stroke } from "./types";
-import { offsetTextQuad, scaleQuad } from "./transform";
+import { offsetTextQuad, scaleQuad, rotateQuad } from "./transform";
 
 interface EditorState {
   image: string | null;
@@ -30,6 +30,7 @@ interface EditorState {
   setTextCorners: (c: Corner[] | null) => void;
   updateTextCorner: (i: number, c: Corner) => void;
   moveTextQuad: (delta: Corner) => void;
+  rotateTextQuad: (deltaRad: number) => void;
   setSeparateTextPlacement: (v: boolean) => void;
   setTextFontScale: (pct: number) => void;
   setDetectedCorners: (c: Corner[] | null) => void;
@@ -98,6 +99,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!s.textCorners) return s;
     const [dx, dy] = delta;
     return { textCorners: s.textCorners.map(([x, y]) => [x + dx, y + dy] as Corner) };
+  }),
+  rotateTextQuad: (deltaRad) => set((s) => {
+    if (!s.textCorners) return s;
+    return { textCorners: rotateQuad(s.textCorners, deltaRad) };
   }),
   setSeparateTextPlacement: (v) => set((s) => {
     if (v && !s.textCorners && s.corners) {
