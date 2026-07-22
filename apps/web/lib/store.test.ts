@@ -87,6 +87,24 @@ describe("history: commit/undo/redo", () => {
     expect(useEditor.getState().textCorners).toEqual([[9, 9], [8, 9], [8, 8], [9, 8]]);
   });
 
+  it("undo/redo round-trips separateTextPlacement through the snapshot", () => {
+    // separateTextPlacement must be part of the snapshot, not just
+    // textCorners -- otherwise undoing past a toggle leaves the switch (and
+    // the text quad's visibility) out of sync with the restored corners
+    useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setSeparateTextPlacement(true);
+    useEditor.getState().commit();
+    useEditor.getState().setSeparateTextPlacement(false);
+    useEditor.getState().commit();
+    expect(useEditor.getState().separateTextPlacement).toBe(false);
+
+    useEditor.getState().undo();
+    expect(useEditor.getState().separateTextPlacement).toBe(true);
+
+    useEditor.getState().redo();
+    expect(useEditor.getState().separateTextPlacement).toBe(false);
+  });
+
   it("undo/redo at the boundaries are safe no-ops", () => {
     expect(selectCanUndo(useEditor.getState())).toBe(false);
     useEditor.getState().undo();
@@ -115,6 +133,31 @@ describe("placement: detectedCorners, resetCorners, moveQuad", () => {
     useEditor.getState().setCorners([[1, 1], [2, 1], [2, 2], [1, 2]]);
     useEditor.getState().resetCorners();
     expect(useEditor.getState().corners).toEqual([[1, 1], [2, 1], [2, 2], [1, 2]]);
+  });
+
+  it("resetCorners also re-offsets the text quad when separate text placement is on", () => {
+    // otherwise the text quad stays wherever it was relative to the OLD
+    // (drifted) bars quad, orphaned from the freshly-reset one. Drift the
+    // bars quad BEFORE enabling separate text placement, so the auto-offset
+    // is computed from the drifted position -- distinct from what it would
+    // be computed from detectedCorners, so a fix that fails to re-offset
+    // can't coincidentally produce the same textCorners value.
+    useEditor.getState().setDetectedCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setCorners([[300, 300], [500, 300], [500, 350], [300, 350]]); // drifted far away
+    useEditor.getState().setSeparateTextPlacement(true);
+    expect(useEditor.getState().textCorners).toEqual([[300, 350], [500, 350], [500, 370], [300, 370]]);
+
+    useEditor.getState().resetCorners();
+    expect(useEditor.getState().corners).toEqual([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    expect(useEditor.getState().textCorners).toEqual([[0, 50], [200, 50], [200, 70], [0, 70]]);
+  });
+
+  it("resetCorners leaves textCorners alone when separate text placement is off", () => {
+    useEditor.getState().setDetectedCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setCorners([[300, 300], [500, 300], [500, 350], [300, 350]]);
+    useEditor.getState().setTextCorners([[10, 10], [20, 10], [20, 20], [10, 20]]);
+    useEditor.getState().resetCorners();
+    expect(useEditor.getState().textCorners).toEqual([[10, 10], [20, 10], [20, 20], [10, 20]]);
   });
 
   it("moveQuad translates all corners by the same delta, preserving shape", () => {

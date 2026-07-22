@@ -129,7 +129,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     return { corners: s.corners.map(([x, y]) => [x + dx, y + dy] as Corner) };
   }),
   resetCorners: () => {
-    set((s) => (s.detectedCorners ? { corners: s.detectedCorners } : s));
+    set((s) => {
+      if (!s.detectedCorners) return s;
+      // resetting the bars quad without also re-offsetting the text quad
+      // would leave it positioned relative to wherever the bars quad used
+      // to be (before scale/rotate/drag), orphaned from the freshly-reset
+      // bars quad it's supposed to sit below
+      return {
+        corners: s.detectedCorners,
+        textCorners: s.separateTextPlacement ? offsetTextQuad(s.detectedCorners) : s.textCorners,
+      };
+    });
     get().commit();
   },
   setField: (k, v) => set((s) => {
@@ -154,7 +164,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setResult: (r) => set({ result: r }),
   commit: () => set((s) => {
     const snapshot: EditorSnapshot = {
-      corners: s.corners, textCorners: s.textCorners, symbology: s.symbology, value: s.value,
+      corners: s.corners, textCorners: s.textCorners, separateTextPlacement: s.separateTextPlacement,
+      symbology: s.symbology, value: s.value,
       options: s.options, blendMode: s.blendMode, result: s.result,
       retouchStrokes: s.retouchStrokes, resultMaskStrokes: s.resultMaskStrokes,
     };

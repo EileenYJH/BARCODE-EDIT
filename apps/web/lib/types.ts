@@ -34,6 +34,7 @@ export interface Stroke {
 export interface EditorSnapshot {
   corners: Corner[] | null;
   textCorners: Corner[] | null;
+  separateTextPlacement: boolean;
   symbology: string;
   value: string;
   options: BarcodeOptions;
