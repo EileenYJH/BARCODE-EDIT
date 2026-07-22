@@ -45,3 +45,26 @@ def test_generate_barcode_fit_falls_back_on_degenerate_target_aspect():
     res = generate_barcode_fit("code128", "HELLO123", GenerateOptions(), target_aspect=0.0)
     plain = generate_barcode("code128", "HELLO123", GenerateOptions())
     assert res.bitmap.shape == plain.bitmap.shape
+
+def test_font_size_scales_down_with_small_module_height():
+    small = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=4.0, show_text=True))
+    small_no_text = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=4.0, show_text=False))
+    default = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=15.0, show_text=True))
+    default_no_text = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=15.0, show_text=False))
+    small_overhead = small.bitmap.shape[0] - small_no_text.bitmap.shape[0]
+    default_overhead = default.bitmap.shape[0] - default_no_text.bitmap.shape[0]
+    # a fixed font size makes text proportionally huge on short bars; scaling
+    # it down with module_height keeps the text-to-bar proportion sane
+    assert small_overhead < default_overhead
+
+def test_font_size_is_capped_for_very_large_module_height():
+    mid = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=True))
+    mid_no_text = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=False))
+    large = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=60.0, show_text=True))
+    large_no_text = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=60.0, show_text=False))
+    mid_overhead = mid.bitmap.shape[0] - mid_no_text.bitmap.shape[0]
+    large_overhead = large.bitmap.shape[0] - large_no_text.bitmap.shape[0]
+    # module_height more than doubles (25 -> 60); if font size scaled
+    # unbounded, text overhead would grow by a similar factor. Capped, it
+    # should barely grow at all.
+    assert large_overhead < mid_overhead * 1.3
