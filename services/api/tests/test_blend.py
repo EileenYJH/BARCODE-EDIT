@@ -19,3 +19,27 @@ def test_seamless_blend_has_softer_seam_than_hard_paste():
     blended = seamless_blend(patch, bg, mask, mode="normal")
     assert blended.shape == bg.shape
     assert _seam_energy(blended, mask) < _seam_energy(hard, mask)
+
+def test_seamless_blend_follows_destination_lighting_gradient():
+    # a real product label often has its own lighting gradient (a
+    # highlight/shadow sweeping across the surface). A flat-toned patch
+    # (a single uniform paper-white value everywhere, as a plain tone-match
+    # produces) reads as an obvious rectangular "sticker" against that real
+    # gradient -- confirmed via a real product photo where the pasted
+    # patch's uniform tone visibly broke from the label's natural brightness
+    # falloff right at the mask edge. The blended patch should instead
+    # follow the destination's own left-to-right gradient here, not stay
+    # flat.
+    dst = np.zeros((200, 200, 3), dtype=np.uint8)
+    for x in range(200):
+        dst[:, x] = int(80 + x * 0.6)  # left ~80, right ~200
+    patch = np.full((200, 200, 3), 150, dtype=np.uint8)  # flat mid-gray "paper"
+    mask = np.zeros((200, 200), np.uint8)
+    cv2.rectangle(mask, (50, 50), (150, 150), 255, -1)
+
+    blended = seamless_blend(patch, dst, mask, mode="normal")
+    left = blended[90:110, 60:80].mean()
+    right = blended[90:110, 120:140].mean()
+    # the right side of the patch sits on a brighter part of the gradient
+    # than the left side -- a flat composite would make these equal
+    assert right - left > 20
