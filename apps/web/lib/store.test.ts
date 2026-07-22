@@ -73,6 +73,20 @@ describe("history: commit/undo/redo", () => {
     expect(selectCanRedo(useEditor.getState())).toBe(false);
   });
 
+  it("undo/redo round-trips textCorners through the snapshot", () => {
+    useEditor.getState().setTextCorners([[1, 1], [2, 1], [2, 2], [1, 2]]);
+    useEditor.getState().commit();
+    useEditor.getState().setTextCorners([[9, 9], [8, 9], [8, 8], [9, 8]]);
+    useEditor.getState().commit();
+    expect(useEditor.getState().textCorners).toEqual([[9, 9], [8, 9], [8, 8], [9, 8]]);
+
+    useEditor.getState().undo();
+    expect(useEditor.getState().textCorners).toEqual([[1, 1], [2, 1], [2, 2], [1, 2]]);
+
+    useEditor.getState().redo();
+    expect(useEditor.getState().textCorners).toEqual([[9, 9], [8, 9], [8, 8], [9, 8]]);
+  });
+
   it("undo/redo at the boundaries are safe no-ops", () => {
     expect(selectCanUndo(useEditor.getState())).toBe(false);
     useEditor.getState().undo();
@@ -217,6 +231,16 @@ describe("separate text placement", () => {
     useEditor.getState().setTextCorners([[10, 10], [30, 10], [30, 30], [10, 30]]);
     useEditor.getState().moveTextQuad([5, -3]);
     expect(useEditor.getState().textCorners).toEqual([[15, 7], [35, 7], [35, 27], [15, 27]]);
+  });
+
+  it("moveTextQuad is a no-op when there are no text corners", () => {
+    useEditor.getState().moveTextQuad([5, 5]);
+    expect(useEditor.getState().textCorners).toBeNull();
+  });
+
+  it("updateTextCorner is a no-op when there are no text corners", () => {
+    useEditor.getState().updateTextCorner(0, [99, 99]);
+    expect(useEditor.getState().textCorners).toBeNull();
   });
 
   it("setImage resets text placement state", () => {
