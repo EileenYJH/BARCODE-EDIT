@@ -7,6 +7,7 @@ import { UploadPanel } from "@/components/UploadPanel";
 import { BarcodeSettings } from "@/components/BarcodeSettings";
 import { AdjustPanel } from "@/components/AdjustPanel";
 import { HistoryControls } from "@/components/HistoryControls";
+import { ToolPanel } from "@/components/ToolPanel";
 import { LayerPanel } from "@/components/LayerPanel";
 import { Comparison } from "@/components/Comparison";
 import { FadeComparison } from "@/components/FadeComparison";
@@ -16,6 +17,10 @@ import { Button } from "@/components/ui/button";
 
 const EditorCanvas = dynamic(
   () => import("@/components/EditorCanvas").then((m) => m.EditorCanvas),
+  { ssr: false }
+);
+const RetouchCanvas = dynamic(
+  () => import("@/components/RetouchCanvas").then((m) => m.RetouchCanvas),
   { ssr: false }
 );
 
@@ -40,9 +45,16 @@ export default function Page() {
         <UploadPanel />
         <BarcodeSettings />
         <AdjustPanel onConfirm={() => m.mutate()} isPending={m.isPending} />
+        <ToolPanel />
         {s.result && !s.adjusting && (
           <Button variant="outline" className="w-full" onClick={() => s.setAdjusting(true)}>
             Adjust placement
+          </Button>
+        )}
+        {s.result && (
+          <Button variant="outline" className="w-full"
+                  onClick={() => s.setRetouching(!s.retouching)}>
+            {s.retouching ? "Done" : "Retouch"}
           </Button>
         )}
         <HistoryControls />
@@ -53,7 +65,7 @@ export default function Page() {
       </aside>
 
       <section className="p-4 flex items-center justify-center overflow-auto">
-        <EditorCanvas />
+        {s.retouching ? <RetouchCanvas /> : <EditorCanvas />}
       </section>
 
       <aside className="border-l p-4 space-y-6 overflow-y-auto">
