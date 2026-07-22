@@ -30,13 +30,25 @@ def _pil_to_bgr(img: Image.Image) -> np.ndarray:
     rgb = np.array(img.convert("RGB"))
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
+def _proportional_font_size(module_height: float) -> float:
+    """python-barcode's ImageWriter defaults to a fixed 10pt font regardless
+    of module_height, so text stays the same absolute size while bars grow
+    or shrink -- looking oversized on short bars and undersized on tall ones.
+    Scale it to the library's own default ratio (10pt at 15mm), clamped to a
+    sane range so extreme module_height values (from generate_barcode_fit's
+    aspect-matching) can't blow the text up past legible/non-overlapping
+    bounds or shrink it to nothing.
+    """
+    return max(6.0, min(14.0, 10.0 * module_height / 15.0))
+
 def _generate_linear(symb: str, value: str, opts: GenerateOptions) -> GenerateResult:
     try:
         cls = barcode.get_barcode_class(_LINEAR[symb])
     except Exception as e:
         raise GenerateError(str(e))
     common = {"write_text": opts.show_text, "quiet_zone": opts.quiet_zone,
-              "module_width": opts.module_width, "module_height": opts.module_height}
+              "module_width": opts.module_width, "module_height": opts.module_height,
+              "font_size": _proportional_font_size(opts.module_height)}
     try:
         png_buf = BytesIO()
         obj = cls(value, writer=ImageWriter())
@@ -93,21 +105,30 @@ def generate_barcode_fit(symbology: str, value: str, opts: GenerateOptions,
 
     # module_height affects only pixel height (confirmed empirically: pixel
     # width tracks module_width/quiet_zone only), but with a fixed additive
-    # offset (quiet-zone margins etc.), not pure proportionality. Two probes
-    # at different module_height values pin down that line exactly, so a
-    # third render lands on the target aspect ratio precisely.
-    h1, h2 = 10.0, 25.0
-    probe1 = generate_barcode(symbology, value, replace(opts, module_height=h1))
-    probe2 = generate_barcode(symbology, value, replace(opts, module_height=h2))
-    ph1, pw = probe1.bitmap.shape[:2]
-    ph2, _ = probe2.bitmap.shape[:2]
+    # offset (quiet-zone margins etc.), not pure proportionality within a
+    # given font size. `_proportional_font_size` is itself piecewise in
+    # module_height (linear in the middle, clamped constant at each end), so
+    # height-vs-module_height is only *exactly* linear within one of those
+    # three regimes at a time -- not across all of them. Probe within
+    # whichever regime the answer actually lands in, so the two-point fit
+    # stays exact rather than averaging across a clamp boundary.
+    def solve(h1: float, h2: float) -> float:
+        probe1 = generate_barcode(symbology, value, replace(opts, module_height=h1))
+        probe2 = generate_barcode(symbology, value, replace(opts, module_height=h2))
+        ph1, pw = probe1.bitmap.shape[:2]
+        ph2, _ = probe2.bitmap.shape[:2]
+        slope = (ph2 - ph1) / (h2 - h1)
+        if slope == 0:
+            return h1
+        intercept = ph1 - slope * h1
+        target_height_px = pw / target_aspect
+        return max((target_height_px - intercept) / slope, 0.1)
 
-    slope = (ph2 - ph1) / (h2 - h1)
-    if slope == 0:
-        return probe1  # module_height has no effect for this input; nothing to solve
-
-    intercept = ph1 - slope * h1
-    target_height_px = pw / target_aspect
-    module_height = max((target_height_px - intercept) / slope, 0.1)
+    UNCLAMPED_LO, UNCLAMPED_HI = 9.0, 21.0  # where _proportional_font_size clamps
+    module_height = solve(12.0, 18.0)  # first pass, probing the unclamped regime
+    if module_height < UNCLAMPED_LO:
+        module_height = solve(4.0, 7.0)  # re-probe entirely inside the clamped-low regime
+    elif module_height > UNCLAMPED_HI:
+        module_height = solve(25.0, 40.0)  # re-probe entirely inside the clamped-high regime
 
     return generate_barcode(symbology, value, replace(opts, module_height=module_height))
