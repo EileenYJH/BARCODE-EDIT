@@ -28,6 +28,7 @@ export default function Page() {
     mutationFn: () => replace({
       image: s.image!, corners: s.corners!, symbology: s.symbology,
       value: s.value, options: s.options, blend_mode: s.blendMode,
+      text_corners: s.separateTextPlacement && s.textCorners ? s.textCorners : undefined,
     }),
     onSuccess: (r) => {
       s.setResult(r);
