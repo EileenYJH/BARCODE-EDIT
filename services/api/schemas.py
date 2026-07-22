@@ -27,6 +27,7 @@ class ReplaceRequestIn(BaseModel):
     value: str
     options: OptionsIn = OptionsIn()
     blend_mode: str = "normal"
+    text_corners: Optional[List[List[float]]] = Field(None, min_length=4, max_length=4)
 
 class ReplaceResponse(BaseModel):
     result: str
