@@ -1,12 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Stage, Layer, Image as KImage, Line, Circle } from "react-konva";
+import { useEffect, useRef, useState } from "react";
+import { Stage, Layer, Image as KImage, Line, Circle, Rect } from "react-konva";
 import type Konva from "konva";
 import { useEditor } from "@/lib/store";
+import { quadCenter, scaleQuad, rotateQuad } from "@/lib/transform";
+import type { Corner } from "@/lib/types";
+
+interface DragStart {
+  corners: Corner[];
+  center: Corner;
+  startValue: number; // distance-from-center for scale, angle-from-center for rotate
+}
 
 export function EditorCanvas() {
-  const { image, corners, adjusting, updateCorner, moveQuad, commit, result } = useEditor();
+  const { image, corners, adjusting, updateCorner, moveQuad, setCorners, commit, result } = useEditor();
   const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const dragStart = useRef<DragStart | null>(null);
   const shown = adjusting ? image : (result?.result ?? image);
 
   useEffect(() => {
@@ -26,9 +35,58 @@ export function EditorCanvas() {
     const node = e.target;
     const dx = node.x() / scale;
     const dy = node.y() / scale;
-    node.position({ x: 0, y: 0 }); // the quad itself doesn't move; corners do
+    node.position({ x: 0, y: 0 });
     moveQuad([dx, dy]);
   }
+
+  function handleScaleDragStart(e: Konva.KonvaEventObject<DragEvent>) {
+    if (!corners) return;
+    const center = quadCenter(corners);
+    const pos = e.target.getAbsolutePosition();
+    const startValue = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale) || 1;
+    dragStart.current = { corners, center, startValue };
+  }
+
+  function handleScaleDragMove(e: Konva.KonvaEventObject<DragEvent>) {
+    if (!dragStart.current) return;
+    const { corners: startCorners, center, startValue } = dragStart.current;
+    const pos = e.target.getAbsolutePosition();
+    const currentDist = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale);
+    setCorners(scaleQuad(startCorners, currentDist / startValue));
+  }
+
+  function handleTransformDragEnd() {
+    dragStart.current = null;
+    commit();
+  }
+
+  function handleRotateDragStart(e: Konva.KonvaEventObject<DragEvent>) {
+    if (!corners) return;
+    const center = quadCenter(corners);
+    const pos = e.target.getAbsolutePosition();
+    const startValue = Math.atan2(pos.y - center[1] * scale, pos.x - center[0] * scale);
+    dragStart.current = { corners, center, startValue };
+  }
+
+  function handleRotateDragMove(e: Konva.KonvaEventObject<DragEvent>) {
+    if (!dragStart.current) return;
+    const { corners: startCorners, center, startValue: startAngle } = dragStart.current;
+    const pos = e.target.getAbsolutePosition();
+    const currentAngle = Math.atan2(pos.y - center[1] * scale, pos.x - center[0] * scale);
+    setCorners(rotateQuad(startCorners, currentAngle - startAngle));
+  }
+
+  const center = corners ? quadCenter(corners) : null;
+  const edgeMidpoints: Corner[] | null = corners ? [
+    [(corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2],
+    [(corners[1][0] + corners[2][0]) / 2, (corners[1][1] + corners[2][1]) / 2],
+    [(corners[2][0] + corners[3][0]) / 2, (corners[2][1] + corners[3][1]) / 2],
+    [(corners[3][0] + corners[0][0]) / 2, (corners[3][1] + corners[0][1]) / 2],
+  ] : null;
+  const rotateHandlePos: Corner | null = center && edgeMidpoints
+    ? [edgeMidpoints[0][0] + (edgeMidpoints[0][0] - center[0]) * 0.4,
+       edgeMidpoints[0][1] + (edgeMidpoints[0][1] - center[1]) * 0.4]
+    : null;
 
   return (
     <Stage width={w} height={h} className="border rounded">
@@ -52,6 +110,20 @@ export function EditorCanvas() {
                       onDragMove={(e) => updateCorner(i, [e.target.x() / scale, e.target.y() / scale])}
                       onDragEnd={() => commit()} />
             ))}
+            {edgeMidpoints && edgeMidpoints.map((m, i) => (
+              <Rect key={`scale-${i}`} x={m[0] * scale - 5} y={m[1] * scale - 5} width={10} height={10}
+                    fill="#f97316" draggable
+                    onDragStart={handleScaleDragStart}
+                    onDragMove={handleScaleDragMove}
+                    onDragEnd={handleTransformDragEnd} />
+            ))}
+            {rotateHandlePos && (
+              <Circle x={rotateHandlePos[0] * scale} y={rotateHandlePos[1] * scale} radius={6}
+                      fill="#f97316" draggable
+                      onDragStart={handleRotateDragStart}
+                      onDragMove={handleRotateDragMove}
+                      onDragEnd={handleTransformDragEnd} />
+            )}
           </>
         )}
       </Layer>
