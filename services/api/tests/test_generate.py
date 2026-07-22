@@ -120,7 +120,7 @@ def test_generate_barcode_split_fits_bars_crop_to_target_aspect():
     # from the text row and would leave the bars distorted once warped)
     full, bars, text = generate_barcode_split("code128", "HELLO123", GenerateOptions(show_text=True), target_aspect=2.5)
     bh, bw = bars.shape[:2]
-    assert bw / bh == pytest.approx(2.5, rel=0.05)
+    assert bw / bh == pytest.approx(2.5, rel=0.02)
 
 def test_font_size_is_capped_for_very_large_module_height():
     mid = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=True))
