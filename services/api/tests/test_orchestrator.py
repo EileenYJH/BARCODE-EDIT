@@ -88,3 +88,23 @@ def test_replace_preserves_new_barcode_bars_when_an_old_barcode_is_already_there
     # "OLDVALUE1" and "BRIGHTFIX" and confirm it isn't the old pixel value
     old_region = old_warped[interior].astype(int)
     assert not np.allclose(result_interior, old_region, atol=10)
+
+def test_replace_with_text_corners_places_bars_and_text_independently():
+    scene = np.full((400, 900, 3), 220, np.uint8)
+    bars_corners = np.float32([[100, 100], [500, 100], [500, 180], [100, 180]])
+    text_corners = np.float32([[100, 190], [500, 190], [500, 230], [100, 230]])
+    req = ReplaceRequest(
+        image=scene, corners=bars_corners, symbology="code128",
+        value="SPLITME1", options=GenerateOptions(show_text=True),
+        blend_mode="normal", text_corners=text_corners,
+    )
+    res = replace_barcode(req)
+    assert res.result.shape == scene.shape
+
+    bars_mask = np.zeros(scene.shape[:2], np.uint8)
+    cv2.fillPoly(bars_mask, [bars_corners.astype(np.int32)], 255)
+    text_mask = np.zeros(scene.shape[:2], np.uint8)
+    cv2.fillPoly(text_mask, [text_corners.astype(np.int32)], 255)
+    # both regions changed from the original scene
+    assert np.abs(res.result[bars_mask > 0].astype(int) - scene[bars_mask > 0].astype(int)).mean() > 5
+    assert np.abs(res.result[text_mask > 0].astype(int) - scene[text_mask > 0].astype(int)).mean() > 5
