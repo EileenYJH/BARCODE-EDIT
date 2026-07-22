@@ -43,3 +43,27 @@ def test_seamless_blend_follows_destination_lighting_gradient():
     # the right side of the patch sits on a brighter part of the gradient
     # than the left side -- a flat composite would make these equal
     assert right - left > 20
+
+def test_seamless_blend_ignores_nearby_unrelated_features_for_a_thin_wide_mask():
+    # A real label's separately-placed text row (via text_corners) is thin
+    # and wide (e.g. the existing 400x40 fixture in test_orchestrator.py),
+    # unlike the roughly square-ish bars region. If a printed rule line or
+    # border sits close to the text row (very plausible -- captions and
+    # rule lines are often near the barcode's value text), local_tone_correct
+    # must not let that nearby feature dominate the ambient estimate for the
+    # whole strip -- confirmed via direct reproduction: coupling the blur's
+    # sigma to the CURRENT mask's own (small) height let a thin dark rule
+    # line immediately above/below the mask pull the corrected interior down
+    # to ~99 on a uniform 200-value paper background, instead of ~200.
+    dst = np.full((250, 500, 3), 200, dtype=np.uint8)  # uniform bright paper
+    dst[95:100, :] = 90    # thin dark rule line just above the mask
+    dst[140:145, :] = 90   # thin dark rule line just below the mask
+    patch = np.full((250, 500, 3), 150, dtype=np.uint8)  # flat mid-gray "paper"
+    mask = np.zeros((250, 500), np.uint8)
+    cv2.rectangle(mask, (50, 100), (450, 140), 255, -1)  # wide-short: 400x40
+
+    blended = seamless_blend(patch, dst, mask, mode="normal")
+    center = blended[115:125, 200:300].mean()
+    # today's mask-size-coupled sigma lands around ~99-110; the fix should
+    # land much closer to the true 200 paper tone
+    assert center > 150
