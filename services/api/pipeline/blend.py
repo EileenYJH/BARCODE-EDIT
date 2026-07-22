@@ -1,32 +1,24 @@
 import numpy as np
 import cv2
 
-_MODES = {"normal": cv2.NORMAL_CLONE, "mixed": cv2.MIXED_CLONE}
-
 def seamless_blend(src_bgr: np.ndarray, dst_bgr: np.ndarray,
                    mask: np.ndarray, mode: str = "normal") -> np.ndarray:
-    flag = _MODES.get(mode, cv2.NORMAL_CLONE)
-    m = (mask > 0).astype(np.uint8) * 255
-    ys, xs = np.where(m > 0)
-    if len(xs) == 0:
+    # cv2.seamlessClone (Poisson blending) reconstructs the masked interior
+    # from src's gradients using dst's own pixels as the boundary condition.
+    # Replacing a barcode always means dst already has an OLD barcode's own
+    # high-frequency bar pattern right at (and crossing) the mask's edge --
+    # real barcodes have almost no vertical quiet zone, so there's no erosion
+    # amount that clears the bars without eroding away nearly the whole mask
+    # (confirmed by direct reproduction: erosion large enough to reach past
+    # the bars left the old barcode almost entirely un-replaced). Gradient
+    # reconstruction is also the wrong tool for this: match_tone already
+    # matches the pasted region's tone to its surroundings, so there's no
+    # lighting mismatch left for a Poisson solve to fix. A plain alpha
+    # composite with a softened mask edge (for anti-aliasing only, not
+    # blending image content) reproduces the new barcode's bars exactly.
+    m = (mask > 0).astype(np.float32)
+    if not m.any():
         return dst_bgr.copy()
-    cx = int((xs.min() + xs.max()) / 2)
-    cy = int((ys.min() + ys.max()) / 2)
-
-    # Replacing a barcode always means the destination photo already has an
-    # OLD barcode's own high-frequency bar pattern right at (and crossing)
-    # this mask's boundary -- that's the whole point of the app. Confirmed
-    # by direct reproduction: cv2.seamlessClone's Poisson solve can smear
-    # this into a low-contrast gray blob instead of preserving the new
-    # barcode's bars, especially for a rotated mask (any real
-    # perspective-detected placement). A substantial erosion pushes the
-    # mask boundary inward past the barcode's own quiet-zone margin, so the
-    # boundary condition is just plain paper (visually the same whether old
-    # or new) rather than alternating bars -- only the actual bar pattern in
-    # the interior needs the Poisson solve. A small fixed erosion (previously
-    # 1px, "for safety") isn't enough; this needs to scale with the mask's
-    # own size.
-    size = min(xs.max() - xs.min(), ys.max() - ys.min())
-    erode_px = max(1, int(size * 0.4))
-    m = cv2.erode(m, np.ones((erode_px * 2 + 1, erode_px * 2 + 1), np.uint8), iterations=1)
-    return cv2.seamlessClone(src_bgr, dst_bgr, m, (cx, cy), flag)
+    m_soft = cv2.GaussianBlur(m, (0, 0), 1.0)[..., None]
+    out = src_bgr.astype(np.float32) * m_soft + dst_bgr.astype(np.float32) * (1 - m_soft)
+    return np.clip(out, 0, 255).astype(np.uint8)

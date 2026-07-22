@@ -40,19 +40,22 @@ def test_replace_fits_generated_barcode_to_target_quad_aspect():
     target_aspect = quad_aspect_ratio(square_corners)
     assert _svg_aspect_ratio(res.svg) == pytest.approx(target_aspect, rel=0.05)
 
-def test_replace_preserves_bar_contrast_when_an_old_barcode_is_already_there():
+def test_replace_preserves_new_barcode_bars_when_an_old_barcode_is_already_there():
     # a real photo being edited always already has a barcode where the new
     # one goes -- the region being replaced necessarily contains the OLD
     # barcode's own high-frequency black/white bar pattern right at (and
     # crossing) the new placement's mask boundary. Confirmed via direct
-    # reproduction: cv2.seamlessClone can smear this into a low-contrast
-    # gray blob instead of preserving the new barcode's own bars, especially
-    # for a rotated mask (as any real perspective-detected placement is).
+    # reproduction: cv2.seamlessClone (Poisson blending) can smear this into
+    # a low-contrast gray blob instead of preserving the new barcode's own
+    # bars, especially for a rotated mask (as any real perspective-detected
+    # placement is) -- and, separately, that a real barcode has almost no
+    # vertical quiet zone, so no amount of mask erosion clears the bars
+    # without eroding away nearly the whole mask (an earlier "fix" passed a
+    # pixel-spread check while actually leaving the OLD barcode almost
+    # entirely un-replaced, since a crisp old barcode has high spread too).
+    # This test instead directly checks the rendered bars match the NEW
+    # barcode, not just "high contrast" -- so it can't be fooled that way.
     scene = np.full((500, 700, 3), 218, np.uint8)  # bright surface
-    # a REAL barcode's own bar pattern (irregular widths), not a uniform
-    # stripe pattern -- a uniform synthetic pattern turned out to be a
-    # harder, less realistic case for Poisson blending than an actual
-    # barcode's own structure
     old_bitmap = generate_barcode("code128", "OLDVALUE1", GenerateOptions(show_text=True)).bitmap
     old_bh, old_bw = old_bitmap.shape[:2]
     old_corners = np.float32([[258, 229], [431, 236], [429, 288], [256, 281]])
@@ -69,8 +72,19 @@ def test_replace_preserves_bar_contrast_when_an_old_barcode_is_already_there():
     )
     res = replace_barcode(req)
 
-    alpha_mask = cv2.cvtColor(res.layers["mask"], cv2.COLOR_BGR2GRAY) > 0
-    region_pixels = res.result[alpha_mask]
-    # a smudged/washed-out result has noticeably lower pixel-value spread
-    # within the barcode's own footprint than a crisp one with real bars
-    assert region_pixels.std() > 100
+    # shrink the mask a couple pixels to skip the intentionally-feathered
+    # anti-aliasing edge, then compare the rendered result to the new
+    # barcode layer the orchestrator itself recorded -- a smudge or a
+    # not-fully-replaced old barcode would both diverge sharply here, while
+    # a correct composite matches almost exactly.
+    alpha_mask = cv2.cvtColor(res.layers["mask"], cv2.COLOR_BGR2GRAY)
+    interior = cv2.erode(alpha_mask, np.ones((5, 5), np.uint8)) > 0
+    result_interior = res.result[interior].astype(int)
+    new_barcode_interior = res.layers["new_barcode"][interior].astype(int)
+    assert np.abs(result_interior - new_barcode_interior).mean() < 5
+
+    # and it must actually be the NEW value, not the old one still showing
+    # through -- sample a bar column near the text that differs between
+    # "OLDVALUE1" and "BRIGHTFIX" and confirm it isn't the old pixel value
+    old_region = old_warped[interior].astype(int)
+    assert not np.allclose(result_interior, old_region, atol=10)
