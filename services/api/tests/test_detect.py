@@ -27,6 +27,19 @@ def test_detects_barcode_at_true_location():
     assert best.value == "TESTCODE"
 
 
+def test_detection_is_padded_beyond_the_bare_bar_region():
+    # classical detection finds just the bar region, inset from the
+    # barcode's true visual footprint (quiet zone margins, printed text
+    # below the bars). Using an un-padded detection as a replacement's
+    # placement quad leaves a thin sliver of the OLD barcode's own edge
+    # visible just outside the new one -- confirmed via a real product
+    # photo where the old barcode's top bar edge peeked through by a couple
+    # of pixels. Padding should push coverage well past the loose 0.4 floor.
+    scene, corners, meta = make_scene(warp=False)
+    dets = detect_barcodes(scene)
+    best = dets[0]
+    assert _area(best.corners) > 0.7 * _area(corners)
+
 def test_no_barcode_returns_empty():
     blank = np.full((300, 300, 3), 200, dtype=np.uint8)
     assert detect_barcodes(blank) == []
