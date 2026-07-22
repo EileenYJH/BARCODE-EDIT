@@ -36,6 +36,28 @@ def test_generate_barcode_fit_matches_a_different_target_aspect():
     h, w = res.bitmap.shape[:2]
     assert w / h == pytest.approx(2.5, rel=0.02)
 
+def test_generate_barcode_fit_sizes_to_a_small_target_without_extreme_downscale():
+    # a barcode's own bars are a fine periodic pattern -- if the generated
+    # bitmap is much bigger than the actual on-photo placement, the warp
+    # that shrinks it down to fit has to alias that pattern, which can
+    # distort bar widths enough to break scanning entirely (confirmed:
+    # a bitmap oversampled far past a small target's actual size failed to
+    # decode after warping, regardless of interpolation filter). Sizing to
+    # the real target keeps the eventual downscale mild.
+    res = generate_barcode_fit("code128", "HELLO123", GenerateOptions(),
+                                target_aspect=2.5, target_width_px=300)
+    h, w = res.bitmap.shape[:2]
+    assert w < 300 * 2.5  # not wildly oversized relative to the target
+
+def test_generate_barcode_fit_sizes_up_for_a_large_target():
+    # the opposite case: a close-up photo where the barcode's on-photo
+    # placement is large. Without sizing up to match, the warp has to
+    # upscale a small bitmap, blurring bar edges.
+    res = generate_barcode_fit("code128", "HELLO123", GenerateOptions(),
+                                target_aspect=2.5, target_width_px=3000)
+    h, w = res.bitmap.shape[:2]
+    assert w > 3000  # rendered with headroom above the target, not below it
+
 def test_generate_barcode_fit_leaves_qr_square_regardless_of_target_aspect():
     fitted = generate_barcode_fit("qr", "https://example.com", GenerateOptions(), target_aspect=3.0)
     plain = generate_barcode("qr", "https://example.com", GenerateOptions())
@@ -56,6 +78,22 @@ def test_font_size_scales_down_with_small_module_height():
     # a fixed font size makes text proportionally huge on short bars; scaling
     # it down with module_height keeps the text-to-bar proportion sane
     assert small_overhead < default_overhead
+
+def test_bars_are_rendered_above_the_librarys_bare_default_resolution():
+    # a barcode placed on a real photo gets perspective-warped onto the
+    # target quad afterward. The library's own 300dpi default renders the
+    # narrowest module at only ~2px, giving that warp almost nothing to
+    # sample from on any upscale. This is just a floor for callers that
+    # don't know the eventual placement size (generate_barcode_fit's
+    # target_width_px sizes properly to the real target when it's known --
+    # see the "sizes_to_a_small_target"/"sizes_up_for_a_large_target" tests).
+    res = generate_barcode("code128", "ABC1234567", GenerateOptions(show_text=False))
+    row = res.bitmap[res.bitmap.shape[0] // 2, :, 0]
+    # length of the shortest run of same-valued pixels along the row --
+    # i.e. the narrowest single module, in pixels
+    changes = np.where(np.diff(row) != 0)[0]
+    run_lengths = np.diff(np.concatenate([[0], changes, [len(row) - 1]]))
+    assert run_lengths.min() >= 3
 
 def test_font_size_is_capped_for_very_large_module_height():
     mid = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=True))
