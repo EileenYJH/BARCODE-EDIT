@@ -72,8 +72,11 @@ describe("offsetTextQuad", () => {
     expect(text[3]).toEqual([0, 70]);   // bl
   });
 
-  it("preserves rotation/skew: the text quad's left edge stays parallel to the bars quad's", () => {
-    const bars: Corner[] = [[10, 10], [110, 20], [105, 60], [5, 50]];
+  it("preserves rotation/skew: the text quad's edges stay parallel to the bars quad's own edges", () => {
+    // a genuine (non-parallelogram) trapezoid -- left and right edges point
+    // in different directions, so a bug that reused one edge's vector for
+    // both sides would fail this
+    const bars: Corner[] = [[10, 10], [110, 20], [105, 60], [0, 55]];
     const text = offsetTextQuad(bars);
     const barsLeftDir = [bars[3][0] - bars[0][0], bars[3][1] - bars[0][1]];
     const textLeftDir = [text[3][0] - text[0][0], text[3][1] - text[0][1]];
@@ -81,5 +84,12 @@ describe("offsetTextQuad", () => {
     const textLeftLen = Math.hypot(textLeftDir[0], textLeftDir[1]);
     expect(textLeftDir[0] / textLeftLen).toBeCloseTo(barsLeftDir[0] / barsLeftLen, 5);
     expect(textLeftDir[1] / textLeftLen).toBeCloseTo(barsLeftDir[1] / barsLeftLen, 5);
+
+    const barsRightDir = [bars[2][0] - bars[1][0], bars[2][1] - bars[1][1]];
+    const textRightDir = [text[2][0] - text[1][0], text[2][1] - text[1][1]];
+    const barsRightLen = Math.hypot(barsRightDir[0], barsRightDir[1]);
+    const textRightLen = Math.hypot(textRightDir[0], textRightDir[1]);
+    expect(textRightDir[0] / textRightLen).toBeCloseTo(barsRightDir[0] / barsRightLen, 5);
+    expect(textRightDir[1] / textRightLen).toBeCloseTo(barsRightDir[1] / barsRightLen, 5);
   });
 });
