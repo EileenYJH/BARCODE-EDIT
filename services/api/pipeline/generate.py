@@ -18,6 +18,12 @@ class GenerateOptions:
     quiet_zone: float = 6.5      # mm, python-barcode units
     module_width: float = 0.2    # mm
     module_height: float = 15.0  # mm
+    text_font_scale: float = 1.0 # multiplier on the proportional font-size
+                                  # default, independent of module_height --
+                                  # lets a separately-placed text region's
+                                  # size be controlled without affecting bars
+                                  # sizing. 1.0 reproduces today's exact
+                                  # output for every existing caller.
 
 @dataclass
 class GenerateResult:
@@ -59,7 +65,7 @@ def _generate_linear(symb: str, value: str, opts: GenerateOptions, dpi: float = 
     # ratio it just solved for (confirmed: this broke an aspect-ratio test).
     common = {"write_text": opts.show_text, "quiet_zone": opts.quiet_zone,
               "module_width": opts.module_width, "module_height": opts.module_height,
-              "font_size": _proportional_font_size(opts.module_height),
+              "font_size": _proportional_font_size(opts.module_height) * opts.text_font_scale,
               "dpi": dpi}
     try:
         png_buf = BytesIO()
@@ -211,6 +217,21 @@ def generate_barcode_split(symbology: str, value: str, opts: GenerateOptions,
     no_text = _generate_linear(symb, value, bars_only_fitted_opts, dpi)
     full = _generate_linear(symb, value, replace(bars_only_fitted_opts, show_text=True), dpi)
     bars_h = no_text.bitmap.shape[0]
-    bars_bitmap = full.bitmap[:bars_h]
-    text_bitmap = full.bitmap[bars_h:]
+    # bars_bitmap is always the actual bars-only render, never a crop of
+    # full.bitmap -- python-barcode anchors text to a descender baseline, so
+    # a large enough text_font_scale can push ascenders UP above bars_h
+    # (confirmed via direct reproduction: text_font_scale=1.8 bled text
+    # pixels into rows 241-265 of what should have been a pure-bars crop).
+    # Slicing from full.bitmap let that bleed corrupt the bars crop; using
+    # no_text.bitmap directly is immune to it by construction.
+    bars_bitmap = no_text.bitmap
+    # text_bitmap must start wherever text pixels actually begin, which
+    # shifts with text_font_scale -- detect it by diffing full.bitmap
+    # against the known-clean no_text.bitmap over their shared rows, rather
+    # than assuming it's always exactly bars_h.
+    shared = min(bars_h, full.bitmap.shape[0])
+    diff_rows = np.any(full.bitmap[:shared] != no_text.bitmap[:shared], axis=(1, 2))
+    bleeding = np.where(diff_rows)[0]
+    text_top = int(bleeding.min()) if bleeding.size else bars_h
+    text_bitmap = full.bitmap[text_top:]
     return full, bars_bitmap, text_bitmap

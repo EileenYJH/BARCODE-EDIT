@@ -19,6 +19,7 @@ class OptionsIn(BaseModel):
     quiet_zone: float = 6.5
     module_width: float = 0.2
     module_height: float = 15.0
+    text_font_scale: float = 1.0
 
 class ReplaceRequestIn(BaseModel):
     image: str

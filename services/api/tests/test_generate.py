@@ -122,6 +122,18 @@ def test_generate_barcode_split_fits_bars_crop_to_target_aspect():
     bh, bw = bars.shape[:2]
     assert bw / bh == pytest.approx(2.5, rel=0.02)
 
+def test_text_font_scale_changes_text_height_independent_of_bars():
+    base_full, base_bars, base_text = generate_barcode_split(
+        "code128", "HELLO123", GenerateOptions(show_text=True), target_aspect=2.5)
+    scaled_full, scaled_bars, scaled_text = generate_barcode_split(
+        "code128", "HELLO123", GenerateOptions(show_text=True, text_font_scale=1.8),
+        target_aspect=2.5)
+    # bars crop comes from a text-off render, so it must be pixel-identical
+    # regardless of text_font_scale -- confirms the two are truly decoupled
+    assert np.array_equal(scaled_bars, base_bars)
+    # a bigger font_size renders taller text
+    assert scaled_text.shape[0] > base_text.shape[0]
+
 def test_font_size_is_capped_for_very_large_module_height():
     mid = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=True))
     mid_no_text = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=False))
