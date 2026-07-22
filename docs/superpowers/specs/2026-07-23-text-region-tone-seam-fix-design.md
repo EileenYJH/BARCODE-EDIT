@@ -13,17 +13,21 @@ sigma = max(10.0, size * 0.3)
 
 ## Fix
 
-Make the blur anisotropic: derive separate `sigmaX`/`sigmaY` from the mask's actual width and height, instead of one isotropic sigma from `min(width, height)`. `cv2.GaussianBlur` already accepts distinct X/Y sigmas. A wide-short mask then gets a wide-reaching horizontal blur (grounded in real pixels left/right of the strip) and a shorter vertical blur (matching its real height) — so the ambient estimate stops being bottlenecked by the smaller dimension.
+Empirically (see below), the anisotropic-sigma idea does not actually fix the seam — the real problem is that `sigma` is derived from the *current mask's own size* at all. Ambient lighting is a property of the whole photograph, not of whatever region happens to need replacing; a thin mask (the text row) getting a small sigma "by accident" is what lets a nearby unrelated feature (a printed rule line, a border, adjacent text) dominate the ambient estimate for the mask's interior.
+
+Verified via direct reproduction: a destination with a uniform 200-value paper tone but a thin darker rule line (value 90) immediately above/below a 400×40 mask. Today's formula (`sigma = max(10, min(w,h)*0.3) ≈ 12`) corrects the interior to **~99** — it should be ~200. Widening sigma per-axis (my first proposal) only reaches **~110** — still badly wrong, because vertical sigma is still bottlenecked by the mask's own 40px height.
+
+**Fix:** base `sigma` on the destination image's own scale instead of the mask's:
 
 ```python
-w = xs.max() - xs.min()
-h = ys.max() - ys.min()
-sigma_x = max(10.0, w * 0.3)
-sigma_y = max(10.0, h * 0.3)
-ambient = cv2.GaussianBlur(dst_filled, (0, 0), sigmaX=sigma_x, sigmaY=sigma_y)
+img_h, img_w = dst_bgr.shape[:2]
+sigma = max(20.0, min(img_h, img_w) * 0.25)
+ambient = cv2.GaussianBlur(dst_filled, (0, 0), sigma)
 ```
 
-No other behavior changes: inpainting, the additive-shift formula, and `seamless_blend`'s feathering are untouched. This only changes how the ambient estimate's blur radius is chosen.
+With this formula, the same rule-line scenario recovers to **~167** (still imperfect — the rule line is pathologically adjacent to the mask with zero gap — but a large improvement over ~99), while a smooth destination lighting gradient (the scenario `seamless_blend`'s existing test already covers) still tracks accurately (within ~3 units of the true local value) for both a wide-short mask and the existing squarish bars-shaped mask — confirming this doesn't regress the already-working bars path.
+
+No other behavior changes: inpainting, the additive-shift formula, and `seamless_blend`'s feathering are untouched. This only changes how the ambient estimate's blur radius is chosen, and it's now a function of the image, not the mask.
 
 ## Scope
 
@@ -32,9 +36,9 @@ No other behavior changes: inpainting, the additive-shift formula, and `seamless
 
 ## Testing
 
-- Existing tests in `test_orchestrator.py` (`test_replace_with_text_corners_places_bars_and_text_independently`) must still pass unchanged.
-- New unit test on `local_tone_correct` directly: build a synthetic destination with a horizontal lighting gradient (e.g. left side dark, right side bright) and a wide-short mask spanning both ends; assert the corrected output's left and right edges each track the destination's *local* ambient value at that edge (within a tolerance), rather than both converging toward one mid-strip average — this is the failure mode the isotropic-sigma bug produces and the anisotropic fix should resolve.
-- A square-ish mask (matching today's barcode-bars shape) should produce sigma_x ≈ sigma_y ≈ today's value, i.e. no behavior change for the existing bars path.
+- Existing tests in `test_orchestrator.py` (`test_replace_with_text_corners_places_bars_and_text_independently`) and `test_blend.py` must still pass unchanged.
+- New unit test on `local_tone_correct` (`test_blend.py`): build a destination that's a uniform paper tone except for a thin darker rule line immediately above and below a wide-short (400×40) mask; assert the corrected interior lands close to the uniform paper tone, not the nearby rule line's value — this is the reproduced failure mode, and the fix should land substantially closer to the paper tone than today's formula does.
+- Re-verify `test_seamless_blend_follows_destination_lighting_gradient` (already existing) still passes — the image-scale sigma must not regress tracking of a real, smooth destination lighting gradient.
 
 ## Out of Scope
 
