@@ -17,9 +17,22 @@ export function rasterizeStroke(
         if (dx * dx + dy * dy > radius * radius) continue;
         const idx = (y * width + x) * 4;
         if (stroke.tool === "eraser") {
-          buffer[idx + 3] = 0;
+          // Soft erase: each pass removes `opacity` fraction of whatever
+          // alpha remains, so 1.0 clears in one stroke and lower values
+          // need repeated passes to fully clear.
+          buffer[idx + 3] = buffer[idx + 3] * (1 - stroke.opacity);
         } else {
-          buffer[idx] = r; buffer[idx + 1] = g; buffer[idx + 2] = b; buffer[idx + 3] = 255;
+          // Standard "over" alpha compositing, so overlapping/partial-opacity
+          // brush strokes build up naturally instead of hard-overwriting.
+          const srcA = stroke.opacity;
+          const dstA = buffer[idx + 3] / 255;
+          const outA = srcA + dstA * (1 - srcA);
+          if (outA > 0) {
+            buffer[idx] = (r * srcA + buffer[idx] * dstA * (1 - srcA)) / outA;
+            buffer[idx + 1] = (g * srcA + buffer[idx + 1] * dstA * (1 - srcA)) / outA;
+            buffer[idx + 2] = (b * srcA + buffer[idx + 2] * dstA * (1 - srcA)) / outA;
+          }
+          buffer[idx + 3] = outA * 255;
         }
       }
     }

@@ -7,7 +7,7 @@ import { ToolPanel } from "./ToolPanel";
 function reset() {
   useEditor.setState({
     retouching: true, tool: "brush", activeLayer: "retouch",
-    brushSize: 12, brushColor: "#000000",
+    brushSize: 12, brushColor: "#000000", brushOpacity: 1,
   });
 }
 
@@ -45,5 +45,16 @@ describe("ToolPanel", () => {
     const colorInput = screen.getByDisplayValue("#000000");
     fireEvent.change(colorInput, { target: { value: "#ff0000" } });
     expect(useEditor.getState().brushColor).toBe("#ff0000");
+  });
+
+  it("the opacity control is visible for the brush tool", () => {
+    render(<ToolPanel />);
+    expect(screen.getByText("Opacity")).toBeInTheDocument();
+  });
+
+  it("the opacity control is also visible for the eraser tool", () => {
+    useEditor.setState({ tool: "eraser" });
+    render(<ToolPanel />);
+    expect(screen.getByText("Opacity")).toBeInTheDocument();
   });
 });

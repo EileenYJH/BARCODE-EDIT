@@ -8,7 +8,7 @@ import type { Stroke, Corner } from "@/lib/types";
 export function RetouchCanvas() {
   const {
     image, result, retouchStrokes, resultMaskStrokes,
-    tool, brushColor, brushSize, addStroke,
+    tool, brushColor, brushSize, brushOpacity, addStroke,
   } = useEditor();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [displaySize, setDisplaySize] = useState<{ w: number; h: number } | null>(null);
@@ -42,7 +42,7 @@ export function RetouchCanvas() {
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    currentStroke.current = { tool, color: brushColor, size: brushSize, points: [toImageSpace(e)] };
+    currentStroke.current = { tool, color: brushColor, size: brushSize, opacity: brushOpacity, points: [toImageSpace(e)] };
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {

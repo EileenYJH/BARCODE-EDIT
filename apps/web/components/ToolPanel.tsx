@@ -7,8 +7,8 @@ import { Slider } from "@/components/ui/slider";
 
 export function ToolPanel() {
   const {
-    retouching, tool, activeLayer, brushSize, brushColor,
-    setTool, setActiveLayer, setBrushSize, setBrushColor,
+    retouching, tool, activeLayer, brushSize, brushColor, brushOpacity,
+    setTool, setActiveLayer, setBrushSize, setBrushColor, setBrushOpacity,
   } = useEditor();
   if (!retouching) return null;
 
@@ -38,6 +38,12 @@ export function ToolPanel() {
         <Label>Size</Label>
         <Slider value={[brushSize]} min={2} max={60} step={1}
                 onValueChange={(v) => setBrushSize(Array.isArray(v) ? v[0] : v)} />
+      </div>
+
+      <div className="space-y-1">
+        <Label>Opacity</Label>
+        <Slider value={[brushOpacity * 100]} min={5} max={100} step={5}
+                onValueChange={(v) => setBrushOpacity((Array.isArray(v) ? v[0] : v) / 100)} />
       </div>
 
       {tool === "brush" && (

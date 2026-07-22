@@ -1,12 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useEditor, selectCanUndo, selectCanRedo } from "./store";
 
-const defaultLayers = {
-  original: { visible: true, opacity: 1 },
-  new_barcode: { visible: true, opacity: 1 },
-  result: { visible: true, opacity: 1 },
-};
-
 function reset() {
   useEditor.setState({
     image: null,
@@ -18,12 +12,12 @@ function reset() {
     tool: "brush",
     brushSize: 12,
     brushColor: "#000000",
+    brushOpacity: 1,
     symbology: "code128",
     value: "",
     options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
     blendMode: "normal",
     result: null,
-    layers: defaultLayers,
     retouchStrokes: [],
     resultMaskStrokes: [],
     history: [],
@@ -149,7 +143,7 @@ describe("retouching: mode, strokes, mutual exclusion", () => {
 
   it("addStroke with tool 'brush' always lands in retouchStrokes, regardless of activeLayer", () => {
     useEditor.getState().setActiveLayer("result");
-    const stroke = { tool: "brush" as const, color: "#000000", size: 10, points: [[1, 1]] as [number, number][] };
+    const stroke = { tool: "brush" as const, color: "#000000", size: 10, opacity: 1, points: [[1, 1]] as [number, number][] };
     useEditor.getState().addStroke(stroke);
     expect(useEditor.getState().retouchStrokes).toEqual([stroke]);
     expect(useEditor.getState().resultMaskStrokes).toEqual([]);
@@ -157,7 +151,7 @@ describe("retouching: mode, strokes, mutual exclusion", () => {
 
   it("addStroke with tool 'eraser' lands in retouchStrokes when activeLayer is 'retouch'", () => {
     useEditor.getState().setActiveLayer("retouch");
-    const stroke = { tool: "eraser" as const, color: "#000000", size: 10, points: [[1, 1]] as [number, number][] };
+    const stroke = { tool: "eraser" as const, color: "#000000", size: 10, opacity: 1, points: [[1, 1]] as [number, number][] };
     useEditor.getState().addStroke(stroke);
     expect(useEditor.getState().retouchStrokes).toEqual([stroke]);
     expect(useEditor.getState().resultMaskStrokes).toEqual([]);
@@ -165,20 +159,20 @@ describe("retouching: mode, strokes, mutual exclusion", () => {
 
   it("addStroke with tool 'eraser' lands in resultMaskStrokes when activeLayer is 'result'", () => {
     useEditor.getState().setActiveLayer("result");
-    const stroke = { tool: "eraser" as const, color: "#000000", size: 10, points: [[1, 1]] as [number, number][] };
+    const stroke = { tool: "eraser" as const, color: "#000000", size: 10, opacity: 1, points: [[1, 1]] as [number, number][] };
     useEditor.getState().addStroke(stroke);
     expect(useEditor.getState().resultMaskStrokes).toEqual([stroke]);
     expect(useEditor.getState().retouchStrokes).toEqual([]);
   });
 
   it("addStroke commits exactly once", () => {
-    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[1, 1]] });
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, opacity: 1, points: [[1, 1]] });
     expect(useEditor.getState().history).toHaveLength(1);
   });
 
   it("undo/redo restore the stroke arrays", () => {
-    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[1, 1]] });
-    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[2, 2]] });
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, opacity: 1, points: [[1, 1]] });
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, opacity: 1, points: [[2, 2]] });
     expect(useEditor.getState().retouchStrokes).toHaveLength(2);
 
     useEditor.getState().undo();
@@ -190,7 +184,7 @@ describe("retouching: mode, strokes, mutual exclusion", () => {
 
   it("setImage resets retouching mode and both stroke arrays", () => {
     useEditor.getState().setRetouching(true);
-    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[1, 1]] });
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, opacity: 1, points: [[1, 1]] });
     useEditor.getState().setImage("data:image/png;base64,zzz");
     expect(useEditor.getState().retouching).toBe(false);
     expect(useEditor.getState().retouchStrokes).toEqual([]);

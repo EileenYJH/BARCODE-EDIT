@@ -1,8 +1,6 @@
 import { create } from "zustand";
 import type { Corner, BarcodeOptions, ReplaceResponse, EditorSnapshot, ActiveLayer, Stroke } from "./types";
 
-interface LayerState { visible: boolean; opacity: number; }
-
 interface EditorState {
   image: string | null;
   corners: Corner[] | null;
@@ -13,12 +11,12 @@ interface EditorState {
   tool: "brush" | "eraser";
   brushSize: number;
   brushColor: string;
+  brushOpacity: number;
   symbology: string;
   value: string;
   options: BarcodeOptions;
   blendMode: string;
   result: ReplaceResponse | null;
-  layers: Record<string, LayerState>;
   retouchStrokes: Stroke[];
   resultMaskStrokes: Stroke[];
   history: EditorSnapshot[];
@@ -33,23 +31,17 @@ interface EditorState {
   setTool: (t: "brush" | "eraser") => void;
   setBrushSize: (n: number) => void;
   setBrushColor: (c: string) => void;
+  setBrushOpacity: (n: number) => void;
   addStroke: (stroke: Stroke) => void;
   moveQuad: (delta: Corner) => void;
   resetCorners: () => void;
   setField: <K extends keyof EditorState>(k: K, v: EditorState[K]) => void;
   setOption: <K extends keyof BarcodeOptions>(k: K, v: BarcodeOptions[K]) => void;
   setResult: (r: ReplaceResponse | null) => void;
-  setLayer: (name: string, patch: Partial<LayerState>) => void;
   commit: () => void;
   undo: () => void;
   redo: () => void;
 }
-
-const defaultLayers = {
-  original: { visible: true, opacity: 1 },
-  new_barcode: { visible: true, opacity: 1 },
-  result: { visible: true, opacity: 1 },
-};
 
 export const useEditor = create<EditorState>((set, get) => ({
   image: null,
@@ -61,12 +53,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   tool: "brush",
   brushSize: 12,
   brushColor: "#000000",
+  brushOpacity: 1,
   symbology: "code128",
   value: "",
   options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
   blendMode: "normal",
   result: null,
-  layers: defaultLayers,
   retouchStrokes: [],
   resultMaskStrokes: [],
   history: [],
@@ -91,6 +83,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setTool: (t) => set({ tool: t }),
   setBrushSize: (n) => set({ brushSize: n }),
   setBrushColor: (c) => set({ brushColor: c }),
+  setBrushOpacity: (n) => set({ brushOpacity: n }),
   addStroke: (stroke) => {
     set((s) => {
       if (stroke.tool === "brush") {
@@ -114,15 +107,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   setField: (k, v) => set({ [k]: v } as Partial<EditorState>),
   setOption: (k, v) => set((s) => ({ options: { ...s.options, [k]: v } })),
   setResult: (r) => set({ result: r }),
-  setLayer: (name, patch) => set((s) => ({
-    layers: { ...s.layers, [name]: { ...s.layers[name], ...patch } },
-  })),
   commit: () => set((s) => {
     const snapshot: EditorSnapshot = {
       corners: s.corners, symbology: s.symbology, value: s.value,
       options: s.options, blendMode: s.blendMode, result: s.result,
-      layers: s.layers, retouchStrokes: s.retouchStrokes,
-      resultMaskStrokes: s.resultMaskStrokes,
+      retouchStrokes: s.retouchStrokes, resultMaskStrokes: s.resultMaskStrokes,
     };
     const truncated = s.history.slice(0, s.historyIndex + 1);
     const history = [...truncated, snapshot];

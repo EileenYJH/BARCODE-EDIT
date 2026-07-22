@@ -27,6 +27,7 @@ export interface Stroke {
   tool: "brush" | "eraser";
   color: string;
   size: number;
+  opacity: number;
   points: Corner[];
 }
 
@@ -37,7 +38,6 @@ export interface EditorSnapshot {
   options: BarcodeOptions;
   blendMode: string;
   result: ReplaceResponse | null;
-  layers: Record<string, { visible: boolean; opacity: number }>;
   retouchStrokes: Stroke[];
   resultMaskStrokes: Stroke[];
 }

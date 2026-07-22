@@ -8,9 +8,7 @@ import { BarcodeSettings } from "@/components/BarcodeSettings";
 import { AdjustPanel } from "@/components/AdjustPanel";
 import { HistoryControls } from "@/components/HistoryControls";
 import { ToolPanel } from "@/components/ToolPanel";
-import { LayerPanel } from "@/components/LayerPanel";
 import { Comparison } from "@/components/Comparison";
-import { FadeComparison } from "@/components/FadeComparison";
 import { DifferenceHeatmap } from "@/components/DifferenceHeatmap";
 import { ExportBar } from "@/components/ExportBar";
 import { Button } from "@/components/ui/button";
@@ -69,9 +67,7 @@ export default function Page() {
       </section>
 
       <aside className="border-l p-4 space-y-6 overflow-y-auto">
-        <LayerPanel />
         <Comparison />
-        <FadeComparison />
         <DifferenceHeatmap />
         <ExportBar />
       </aside>
