@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Corner, BarcodeOptions, ReplaceResponse, EditorSnapshot, ActiveLayer, Stroke } from "./types";
-import { offsetTextQuad } from "./transform";
+import { offsetTextQuad, scaleQuad } from "./transform";
 
 interface EditorState {
   image: string | null;
@@ -31,6 +31,7 @@ interface EditorState {
   updateTextCorner: (i: number, c: Corner) => void;
   moveTextQuad: (delta: Corner) => void;
   setSeparateTextPlacement: (v: boolean) => void;
+  setTextFontScale: (pct: number) => void;
   setDetectedCorners: (c: Corner[] | null) => void;
   setAdjusting: (v: boolean) => void;
   setRetouching: (v: boolean) => void;
@@ -65,7 +66,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   brushOpacity: 1,
   symbology: "code128",
   value: "",
-  options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
+  options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15, text_font_scale: 1.0 },
   blendMode: "normal",
   result: null,
   retouchStrokes: [],
@@ -104,6 +105,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     return { separateTextPlacement: v };
   }),
+  setTextFontScale: (pct) => set((s) => {
+    const options = { ...s.options, text_font_scale: pct };
+    if (!s.textCorners) return { options };
+    return { options, textCorners: scaleQuad(s.textCorners, pct / s.options.text_font_scale) };
+  }),
   setDetectedCorners: (c) => set({ detectedCorners: c }),
   setAdjusting: (v) => set(v ? { adjusting: true, retouching: false } : { adjusting: false }),
   setRetouching: (v) => set(v ? { retouching: true, adjusting: false } : { retouching: false }),
@@ -137,7 +143,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       // bars quad it's supposed to sit below
       return {
         corners: s.detectedCorners,
-        textCorners: s.separateTextPlacement ? offsetTextQuad(s.detectedCorners) : s.textCorners,
+        textCorners: s.separateTextPlacement
+          ? scaleQuad(offsetTextQuad(s.detectedCorners), s.options.text_font_scale)
+          : s.textCorners,
       };
     });
     get().commit();

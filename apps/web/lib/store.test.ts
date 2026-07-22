@@ -17,7 +17,7 @@ function reset() {
     brushOpacity: 1,
     symbology: "code128",
     value: "",
-    options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
+    options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15, text_font_scale: 1 },
     blendMode: "normal",
     result: null,
     retouchStrokes: [],
@@ -309,5 +309,29 @@ describe("separate text placement", () => {
     useEditor.getState().setSeparateTextPlacement(true);
     useEditor.getState().setField("symbology", "qr");
     expect(useEditor.getState().separateTextPlacement).toBe(false);
+  });
+
+  it("setTextFontScale updates options.text_font_scale and rescales textCorners around their center", () => {
+    useEditor.getState().setTextCorners([[0, 0], [100, 0], [100, 40], [0, 40]]); // center [50, 20]
+    useEditor.getState().setTextFontScale(1.5);
+    expect(useEditor.getState().options.text_font_scale).toBe(1.5);
+    expect(useEditor.getState().textCorners).toEqual([[-25, -10], [125, -10], [125, 50], [-25, 50]]);
+  });
+
+  it("setTextFontScale updates the option even when there are no text corners yet", () => {
+    useEditor.getState().setTextFontScale(1.2);
+    expect(useEditor.getState().options.text_font_scale).toBe(1.2);
+    expect(useEditor.getState().textCorners).toBeNull();
+  });
+
+  it("resetCorners preserves the current text_font_scale instead of snapping back to 100%", () => {
+    useEditor.getState().setDetectedCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setSeparateTextPlacement(true); // textCorners = offsetTextQuad(...): [[0,50],[200,50],[200,70],[0,70]]
+    useEditor.getState().setTextFontScale(2.0); // textCorners doubles around its own center
+    useEditor.getState().resetCorners();
+    // offsetTextQuad(detectedCorners) is [[0,50],[200,50],[200,70],[0,70]] (center [100,60]),
+    // scaled by 2.0 around that same center
+    expect(useEditor.getState().textCorners).toEqual([[-100, 40], [300, 40], [300, 80], [-100, 80]]);
   });
 });

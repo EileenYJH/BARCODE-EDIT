@@ -7,7 +7,7 @@ import { BarcodeSettings } from "./BarcodeSettings";
 function reset() {
   useEditor.setState({
     symbology: "code128", value: "",
-    options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
+    options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15, text_font_scale: 1 },
     corners: [[0, 0], [200, 0], [200, 50], [0, 50]],
     textCorners: null,
     separateTextPlacement: false,

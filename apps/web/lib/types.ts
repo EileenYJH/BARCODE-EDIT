@@ -13,6 +13,7 @@ export interface BarcodeOptions {
   quiet_zone: number;
   module_width: number;
   module_height: number;
+  text_font_scale: number;
 }
 
 export interface ReplaceResponse {
