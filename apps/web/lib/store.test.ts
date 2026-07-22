@@ -13,12 +13,19 @@ function reset() {
     corners: null,
     detectedCorners: null,
     adjusting: true,
+    retouching: false,
+    activeLayer: "retouch",
+    tool: "brush",
+    brushSize: 12,
+    brushColor: "#000000",
     symbology: "code128",
     value: "",
     options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
     blendMode: "normal",
     result: null,
     layers: defaultLayers,
+    retouchStrokes: [],
+    resultMaskStrokes: [],
     history: [],
     historyIndex: -1,
   });
@@ -120,5 +127,73 @@ describe("placement: detectedCorners, resetCorners, moveQuad", () => {
     expect(useEditor.getState().adjusting).toBe(true);
     expect(useEditor.getState().history).toHaveLength(0);
     expect(useEditor.getState().historyIndex).toBe(-1);
+  });
+});
+
+describe("retouching: mode, strokes, mutual exclusion", () => {
+  beforeEach(reset);
+
+  it("setRetouching(true) turns off adjusting", () => {
+    useEditor.getState().setAdjusting(true);
+    useEditor.getState().setRetouching(true);
+    expect(useEditor.getState().retouching).toBe(true);
+    expect(useEditor.getState().adjusting).toBe(false);
+  });
+
+  it("setAdjusting(true) turns off retouching", () => {
+    useEditor.getState().setRetouching(true);
+    useEditor.getState().setAdjusting(true);
+    expect(useEditor.getState().adjusting).toBe(true);
+    expect(useEditor.getState().retouching).toBe(false);
+  });
+
+  it("addStroke with tool 'brush' always lands in retouchStrokes, regardless of activeLayer", () => {
+    useEditor.getState().setActiveLayer("result");
+    const stroke = { tool: "brush" as const, color: "#000000", size: 10, points: [[1, 1]] as [number, number][] };
+    useEditor.getState().addStroke(stroke);
+    expect(useEditor.getState().retouchStrokes).toEqual([stroke]);
+    expect(useEditor.getState().resultMaskStrokes).toEqual([]);
+  });
+
+  it("addStroke with tool 'eraser' lands in retouchStrokes when activeLayer is 'retouch'", () => {
+    useEditor.getState().setActiveLayer("retouch");
+    const stroke = { tool: "eraser" as const, color: "#000000", size: 10, points: [[1, 1]] as [number, number][] };
+    useEditor.getState().addStroke(stroke);
+    expect(useEditor.getState().retouchStrokes).toEqual([stroke]);
+    expect(useEditor.getState().resultMaskStrokes).toEqual([]);
+  });
+
+  it("addStroke with tool 'eraser' lands in resultMaskStrokes when activeLayer is 'result'", () => {
+    useEditor.getState().setActiveLayer("result");
+    const stroke = { tool: "eraser" as const, color: "#000000", size: 10, points: [[1, 1]] as [number, number][] };
+    useEditor.getState().addStroke(stroke);
+    expect(useEditor.getState().resultMaskStrokes).toEqual([stroke]);
+    expect(useEditor.getState().retouchStrokes).toEqual([]);
+  });
+
+  it("addStroke commits exactly once", () => {
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[1, 1]] });
+    expect(useEditor.getState().history).toHaveLength(1);
+  });
+
+  it("undo/redo restore the stroke arrays", () => {
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[1, 1]] });
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[2, 2]] });
+    expect(useEditor.getState().retouchStrokes).toHaveLength(2);
+
+    useEditor.getState().undo();
+    expect(useEditor.getState().retouchStrokes).toHaveLength(1);
+
+    useEditor.getState().redo();
+    expect(useEditor.getState().retouchStrokes).toHaveLength(2);
+  });
+
+  it("setImage resets retouching mode and both stroke arrays", () => {
+    useEditor.getState().setRetouching(true);
+    useEditor.getState().addStroke({ tool: "brush", color: "#000000", size: 10, points: [[1, 1]] });
+    useEditor.getState().setImage("data:image/png;base64,zzz");
+    expect(useEditor.getState().retouching).toBe(false);
+    expect(useEditor.getState().retouchStrokes).toEqual([]);
+    expect(useEditor.getState().resultMaskStrokes).toEqual([]);
   });
 });

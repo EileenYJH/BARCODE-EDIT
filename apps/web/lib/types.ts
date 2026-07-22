@@ -21,6 +21,15 @@ export interface ReplaceResponse {
   layers: Record<"original" | "new_barcode" | "mask", string>;
 }
 
+export type ActiveLayer = "retouch" | "result";
+
+export interface Stroke {
+  tool: "brush" | "eraser";
+  color: string;
+  size: number;
+  points: Corner[];
+}
+
 export interface EditorSnapshot {
   corners: Corner[] | null;
   symbology: string;
@@ -29,4 +38,6 @@ export interface EditorSnapshot {
   blendMode: string;
   result: ReplaceResponse | null;
   layers: Record<string, { visible: boolean; opacity: number }>;
+  retouchStrokes: Stroke[];
+  resultMaskStrokes: Stroke[];
 }
