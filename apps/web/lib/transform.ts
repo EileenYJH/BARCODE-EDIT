@@ -19,3 +19,13 @@ export function rotateQuad(corners: Corner[], angleRad: number): Corner[] {
     return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos] as Corner;
   });
 }
+
+export function offsetTextQuad(barsCorners: Corner[]): Corner[] {
+  const [tl, tr, br, bl] = barsCorners;
+  const leftEdge: Corner = [bl[0] - tl[0], bl[1] - tl[1]];
+  const rightEdge: Corner = [br[0] - tr[0], br[1] - tr[1]];
+  const HEIGHT_FRACTION = 0.4;
+  const newBl: Corner = [bl[0] + leftEdge[0] * HEIGHT_FRACTION, bl[1] + leftEdge[1] * HEIGHT_FRACTION];
+  const newBr: Corner = [br[0] + rightEdge[0] * HEIGHT_FRACTION, br[1] + rightEdge[1] * HEIGHT_FRACTION];
+  return [bl, br, newBr, newBl];
+}
