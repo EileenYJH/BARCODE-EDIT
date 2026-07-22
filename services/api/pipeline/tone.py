@@ -27,9 +27,14 @@ def match_tone(barcode_bgr: np.ndarray, alpha: np.ndarray,
     src = out[m]
     src_p95 = np.percentile(src, 95, axis=0) + 1e-3  # barcode paper white
 
-    # map barcode white -> surface paper white, keep blacks near 0 but lifted to mean floor
+    # map barcode white -> surface paper white, keep blacks near 0 but lifted
+    # slightly toward the surface's tone. Capped at an absolute value (not
+    # left as an uncapped percentage of tgt_mean) -- a real barcode label's
+    # ink is opaque and stays dark regardless of how bright the surface
+    # underneath is, and an uncapped percentage floor visibly lifted bars
+    # toward gray on bright surfaces (a common case: white packaging).
     scale = tgt_p95 / src_p95
-    floor = tgt_mean * 0.15
+    floor = np.minimum(tgt_mean * 0.15, 15.0)
     adj = src * scale
     adj = np.clip(adj, floor, 255)
     out[m] = adj
