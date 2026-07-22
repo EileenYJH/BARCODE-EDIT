@@ -13,35 +13,29 @@ interface DragStart {
   referenceDist: number; // scale only: average corner-to-center distance, used to normalize sensitivity
 }
 
-export function EditorCanvas() {
-  const { image, corners, adjusting, updateCorner, moveQuad, setCorners, commit, result } = useEditor();
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
+interface QuadTransformBoxProps {
+  corners: Corner[];
+  scale: number;
+  color: string;
+  onUpdateCorner: (i: number, c: Corner) => void;
+  onMoveQuad: (delta: Corner) => void;
+  onSetCorners: (c: Corner[]) => void;
+  onCommit: () => void;
+}
+
+function QuadTransformBox({ corners, scale, color, onUpdateCorner, onMoveQuad, onSetCorners, onCommit }: QuadTransformBoxProps) {
   const dragStart = useRef<DragStart | null>(null);
-  const shown = adjusting ? image : (result?.result ?? image);
-
-  useEffect(() => {
-    if (!shown) { setImg(null); return; }
-    const i = new window.Image();
-    i.src = shown;
-    i.onload = () => setImg(i);
-  }, [shown]);
-
-  if (!img) return <div className="flex h-full items-center justify-center text-muted-foreground">Upload an image to begin</div>;
-
-  const scale = Math.min(900 / img.width, 600 / img.height, 1);
-  const w = img.width * scale, h = img.height * scale;
-  const flat = corners?.flatMap((c) => [c[0] * scale, c[1] * scale]) ?? [];
+  const flat = corners.flatMap((c) => [c[0] * scale, c[1] * scale]);
 
   function handleQuadDragMove(e: Konva.KonvaEventObject<DragEvent>) {
     const node = e.target;
     const dx = node.x() / scale;
     const dy = node.y() / scale;
     node.position({ x: 0, y: 0 });
-    moveQuad([dx, dy]);
+    onMoveQuad([dx, dy]);
   }
 
   function handleScaleDragStart(e: Konva.KonvaEventObject<DragEvent>) {
-    if (!corners) return;
     const center = quadCenter(corners);
     const pos = e.target.getAbsolutePosition();
     const startValue = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale);
@@ -62,16 +56,15 @@ export function EditorCanvas() {
     const currentDist = Math.hypot(pos.x - center[0] * scale, pos.y - center[1] * scale);
     const deltaImageSpace = (currentDist - startValue) / scale;
     const factor = Math.max(0.05, 1 + deltaImageSpace / referenceDist);
-    setCorners(scaleQuad(startCorners, factor));
+    onSetCorners(scaleQuad(startCorners, factor));
   }
 
   function handleTransformDragEnd() {
     dragStart.current = null;
-    commit();
+    onCommit();
   }
 
   function handleRotateDragStart(e: Konva.KonvaEventObject<DragEvent>) {
-    if (!corners) return;
     const center = quadCenter(corners);
     const pos = e.target.getAbsolutePosition();
     const startValue = Math.atan2(pos.y - center[1] * scale, pos.x - center[0] * scale);
@@ -83,58 +76,86 @@ export function EditorCanvas() {
     const { corners: startCorners, center, startValue: startAngle } = dragStart.current;
     const pos = e.target.getAbsolutePosition();
     const currentAngle = Math.atan2(pos.y - center[1] * scale, pos.x - center[0] * scale);
-    setCorners(rotateQuad(startCorners, currentAngle - startAngle));
+    onSetCorners(rotateQuad(startCorners, currentAngle - startAngle));
   }
 
-  const center = corners ? quadCenter(corners) : null;
-  const edgeMidpoints: Corner[] | null = corners ? [
+  const center = quadCenter(corners);
+  const edgeMidpoints: Corner[] = [
     [(corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2],
     [(corners[1][0] + corners[2][0]) / 2, (corners[1][1] + corners[2][1]) / 2],
     [(corners[2][0] + corners[3][0]) / 2, (corners[2][1] + corners[3][1]) / 2],
     [(corners[3][0] + corners[0][0]) / 2, (corners[3][1] + corners[0][1]) / 2],
-  ] : null;
-  const rotateHandlePos: Corner | null = center && edgeMidpoints
-    ? [edgeMidpoints[0][0] + (edgeMidpoints[0][0] - center[0]) * 0.4,
-       edgeMidpoints[0][1] + (edgeMidpoints[0][1] - center[1]) * 0.4]
-    : null;
+  ];
+  const rotateHandlePos: Corner = [
+    edgeMidpoints[0][0] + (edgeMidpoints[0][0] - center[0]) * 0.4,
+    edgeMidpoints[0][1] + (edgeMidpoints[0][1] - center[1]) * 0.4,
+  ];
+
+  return (
+    <>
+      <Line
+        points={[...flat, flat[0], flat[1]]}
+        stroke={color}
+        strokeWidth={2}
+        closed
+        fill="rgba(34,211,238,0.08)"
+        draggable
+        onDragMove={handleQuadDragMove}
+        onDragEnd={() => onCommit()}
+      />
+      {corners.map((c, i) => (
+        <Circle key={i} x={c[0] * scale} y={c[1] * scale} radius={7}
+                fill={color} draggable
+                onDragMove={(e) => onUpdateCorner(i, [e.target.x() / scale, e.target.y() / scale])}
+                onDragEnd={() => onCommit()} />
+      ))}
+      {edgeMidpoints.map((m, i) => (
+        <Rect key={`scale-${i}`} x={m[0] * scale - 5} y={m[1] * scale - 5} width={10} height={10}
+              fill="#f97316" draggable
+              onDragStart={handleScaleDragStart}
+              onDragMove={handleScaleDragMove}
+              onDragEnd={handleTransformDragEnd} />
+      ))}
+      <Circle x={rotateHandlePos[0] * scale} y={rotateHandlePos[1] * scale} radius={6}
+              fill="#f97316" draggable
+              onDragStart={handleRotateDragStart}
+              onDragMove={handleRotateDragMove}
+              onDragEnd={handleTransformDragEnd} />
+    </>
+  );
+}
+
+export function EditorCanvas() {
+  const {
+    image, corners, adjusting, updateCorner, moveQuad, setCorners, commit, result,
+    textCorners, separateTextPlacement, updateTextCorner, moveTextQuad, setTextCorners,
+  } = useEditor();
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const shown = adjusting ? image : (result?.result ?? image);
+
+  useEffect(() => {
+    if (!shown) { setImg(null); return; }
+    const i = new window.Image();
+    i.src = shown;
+    i.onload = () => setImg(i);
+  }, [shown]);
+
+  if (!img) return <div className="flex h-full items-center justify-center text-muted-foreground">Upload an image to begin</div>;
+
+  const scale = Math.min(900 / img.width, 600 / img.height, 1);
+  const w = img.width * scale, h = img.height * scale;
 
   return (
     <Stage width={w} height={h} className="border rounded">
       <Layer>
         <KImage image={img} width={w} height={h} />
         {corners && adjusting && (
-          <>
-            <Line
-              points={[...flat, flat[0], flat[1]]}
-              stroke="#22d3ee"
-              strokeWidth={2}
-              closed
-              fill="rgba(34,211,238,0.08)"
-              draggable
-              onDragMove={handleQuadDragMove}
-              onDragEnd={() => commit()}
-            />
-            {corners.map((c, i) => (
-              <Circle key={i} x={c[0] * scale} y={c[1] * scale} radius={7}
-                      fill="#22d3ee" draggable
-                      onDragMove={(e) => updateCorner(i, [e.target.x() / scale, e.target.y() / scale])}
-                      onDragEnd={() => commit()} />
-            ))}
-            {edgeMidpoints && edgeMidpoints.map((m, i) => (
-              <Rect key={`scale-${i}`} x={m[0] * scale - 5} y={m[1] * scale - 5} width={10} height={10}
-                    fill="#f97316" draggable
-                    onDragStart={handleScaleDragStart}
-                    onDragMove={handleScaleDragMove}
-                    onDragEnd={handleTransformDragEnd} />
-            ))}
-            {rotateHandlePos && (
-              <Circle x={rotateHandlePos[0] * scale} y={rotateHandlePos[1] * scale} radius={6}
-                      fill="#f97316" draggable
-                      onDragStart={handleRotateDragStart}
-                      onDragMove={handleRotateDragMove}
-                      onDragEnd={handleTransformDragEnd} />
-            )}
-          </>
+          <QuadTransformBox corners={corners} scale={scale} color="#22d3ee"
+            onUpdateCorner={updateCorner} onMoveQuad={moveQuad} onSetCorners={setCorners} onCommit={commit} />
+        )}
+        {textCorners && separateTextPlacement && adjusting && (
+          <QuadTransformBox corners={textCorners} scale={scale} color="#a855f7"
+            onUpdateCorner={updateTextCorner} onMoveQuad={moveTextQuad} onSetCorners={setTextCorners} onCommit={commit} />
         )}
       </Layer>
     </Stage>
