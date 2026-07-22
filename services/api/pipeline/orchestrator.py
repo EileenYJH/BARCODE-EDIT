@@ -32,6 +32,9 @@ def _place_region(bitmap: np.ndarray, corners: np.ndarray, dst_image: np.ndarray
     used to build the new_barcode preview layer.
     """
     warped, alpha = warp_onto(bitmap, corners, canvas_hw)
+    if not (alpha > 0).any():
+        # degenerate quad (collapsed to a line/point) -- nothing to place
+        return dst_image, alpha, dst_image
     ys, xs = np.where(alpha > 0)
     x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
     target_region = dst_image[y0:y1 + 1, x0:x1 + 1]

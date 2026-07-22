@@ -2,6 +2,7 @@ import re
 import numpy as np
 import pytest
 import cv2
+from pyzbar import pyzbar
 from pipeline.orchestrator import replace_barcode, ReplaceRequest
 from pipeline.generate import generate_barcode, GenerateOptions
 from pipeline.warp import quad_aspect_ratio
@@ -108,3 +109,49 @@ def test_replace_with_text_corners_places_bars_and_text_independently():
     # both regions changed from the original scene
     assert np.abs(res.result[bars_mask > 0].astype(int) - scene[bars_mask > 0].astype(int)).mean() > 5
     assert np.abs(res.result[text_mask > 0].astype(int) - scene[text_mask > 0].astype(int)).mean() > 5
+
+    # prove the bars actually landed in the bars quad (not swapped with text):
+    # the bars region is axis-aligned so no re-warp is needed for pyzbar to
+    # read it directly
+    bars_crop = res.result[100:180, 100:500]
+    decoded = pyzbar.decode(bars_crop)
+    assert len(decoded) == 1
+    assert decoded[0].data == b"SPLITME1"
+
+    # and the text region should contain no scannable barcode pattern --
+    # proving the bars didn't end up there by mistake
+    text_crop = res.result[190:230, 100:500]
+    assert pyzbar.decode(text_crop) == []
+
+    # the new_barcode preview layer must be updated for BOTH regions, not
+    # left as zeros/stale bars-only content for the text quad
+    bars_interior = cv2.erode(bars_mask, np.ones((5, 5), np.uint8)) > 0
+    result_bars_interior = res.result[bars_interior].astype(int)
+    layer_bars_interior = res.layers["new_barcode"][bars_interior].astype(int)
+    assert np.abs(result_bars_interior - layer_bars_interior).mean() < 5
+
+    text_interior = cv2.erode(text_mask, np.ones((5, 5), np.uint8)) > 0
+    result_text_interior = res.result[text_interior].astype(int)
+    layer_text_interior = res.layers["new_barcode"][text_interior].astype(int)
+    assert np.abs(result_text_interior - layer_text_interior).mean() < 5
+
+def test_replace_with_degenerate_text_corners_is_a_no_op_not_a_crash():
+    scene = np.full((400, 900, 3), 220, np.uint8)
+    bars_corners = np.float32([[100, 100], [500, 100], [500, 180], [100, 180]])
+    # collapsed to a zero-width vertical sliver -- rasterizes to zero pixels
+    # (unlike all-four-corners-identical, which can produce a nonsensical but
+    # nonzero blob from the singular homography -- this reliably yields an
+    # empty alpha mask, exercising the guard)
+    degenerate_text_corners = np.float32([[300, 300], [300, 300], [300, 310], [300, 310]])
+    req = ReplaceRequest(
+        image=scene, corners=bars_corners, symbology="code128",
+        value="SPLITME1", options=GenerateOptions(show_text=True),
+        blend_mode="normal", text_corners=degenerate_text_corners,
+    )
+    res = replace_barcode(req)  # must not raise
+    assert res.result.shape == scene.shape
+
+    # the region around the degenerate quad is unchanged from the original scene
+    around = scene[290:310, 290:310]
+    result_around = res.result[290:310, 290:310]
+    assert np.array_equal(around, result_around)
