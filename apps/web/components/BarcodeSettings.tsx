@@ -8,7 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const SYMBOLOGIES = ["ean13", "ean8", "upca", "code128", "code39", "qr"];
 
 export function BarcodeSettings() {
-  const { symbology, value, options, setField, setOption, commit } = useEditor();
+  const {
+    symbology, value, options, separateTextPlacement,
+    setField, setOption, setSeparateTextPlacement, commit,
+  } = useEditor();
   return (
     <div className="space-y-3">
       <div>
@@ -31,6 +34,13 @@ export function BarcodeSettings() {
         <Switch checked={options.show_text}
                 onCheckedChange={(v) => { setOption("show_text", v); commit(); }} />
       </div>
+      {options.show_text && symbology !== "qr" && (
+        <div className="flex items-center justify-between">
+          <Label>Separate text placement</Label>
+          <Switch checked={separateTextPlacement}
+                  onCheckedChange={(v) => { setSeparateTextPlacement(v); commit(); }} />
+        </div>
+      )}
     </div>
   );
 }
