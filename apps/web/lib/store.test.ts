@@ -250,4 +250,21 @@ describe("separate text placement", () => {
     expect(useEditor.getState().textCorners).toBeNull();
     expect(useEditor.getState().separateTextPlacement).toBe(false);
   });
+
+  it("turning show_text off turns separateTextPlacement off too, not just hiding its toggle", () => {
+    // otherwise separateTextPlacement stays stuck true with no UI control
+    // left to reach it, and EditorCanvas would keep showing an orphaned
+    // text-placement box with no way to turn it off
+    useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setSeparateTextPlacement(true);
+    useEditor.getState().setOption("show_text", false);
+    expect(useEditor.getState().separateTextPlacement).toBe(false);
+  });
+
+  it("switching symbology to qr turns separateTextPlacement off too", () => {
+    useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
+    useEditor.getState().setSeparateTextPlacement(true);
+    useEditor.getState().setField("symbology", "qr");
+    expect(useEditor.getState().separateTextPlacement).toBe(false);
+  });
 });

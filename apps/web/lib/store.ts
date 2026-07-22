@@ -132,8 +132,25 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => (s.detectedCorners ? { corners: s.detectedCorners } : s));
     get().commit();
   },
-  setField: (k, v) => set({ [k]: v } as Partial<EditorState>),
-  setOption: (k, v) => set((s) => ({ options: { ...s.options, [k]: v } })),
+  setField: (k, v) => set((s) => {
+    // switching to QR removes the "Separate text placement" toggle (QR has
+    // no separate readable-text caption in this app), which would otherwise
+    // leave separateTextPlacement stuck true with no UI control left to
+    // turn it off, and an orphaned text-placement box still shown on canvas
+    if (k === "symbology" && v === "qr" && s.separateTextPlacement) {
+      return { [k]: v, separateTextPlacement: false } as Partial<EditorState>;
+    }
+    return { [k]: v } as Partial<EditorState>;
+  }),
+  setOption: (k, v) => set((s) => {
+    const options = { ...s.options, [k]: v };
+    // turning off "Show text" removes the "Separate text placement" toggle
+    // too -- same orphaned-state reasoning as the symbology case above
+    if (k === "show_text" && v === false && s.separateTextPlacement) {
+      return { options, separateTextPlacement: false };
+    }
+    return { options };
+  }),
   setResult: (r) => set({ result: r }),
   commit: () => set((s) => {
     const snapshot: EditorSnapshot = {
