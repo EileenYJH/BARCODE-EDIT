@@ -14,12 +14,25 @@ def local_tone_correct(src_bgr: np.ndarray, dst_bgr: np.ndarray, mask: np.ndarra
     pixel and shifts src by the same additive delta everywhere, so brightness
     follows the surface while bar contrast (a pure additive shift) is
     unchanged.
+
+    Sigma is derived from the destination image's own dimensions, not the
+    mask's -- see the comment at the sigma calculation below for why.
     """
     ys, xs = np.where(mask > 0)
     if len(xs) == 0:
         return src_bgr.copy()
-    size = min(xs.max() - xs.min(), ys.max() - ys.min())
-    sigma = max(10.0, size * 0.3)
+    # sigma reflects the PHOTO's own scale, not the current mask's size --
+    # ambient lighting is a property of the whole surface being photographed,
+    # not of whichever region happens to be getting replaced. Coupling sigma
+    # to the mask's own (possibly small) size let nearby unrelated printed
+    # features dominate the ambient estimate for small/thin masks (confirmed
+    # via direct reproduction: a thin rule line next to a wide-short text
+    # mask pulled the corrected interior far from the true surrounding paper
+    # tone). Confirmed this scale still tracks a real smooth lighting
+    # gradient accurately for both a wide-short mask and the existing
+    # squarish bars-shaped mask.
+    img_h, img_w = dst_bgr.shape[:2]
+    sigma = max(20.0, min(img_h, img_w) * 0.25)
 
     # Inpaint the mask area first so whatever was already there (an old
     # barcode's own bars) doesn't bias the ambient estimate -- we want "what
