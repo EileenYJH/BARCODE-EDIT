@@ -324,6 +324,15 @@ describe("separate text placement", () => {
     expect(useEditor.getState().textCorners).toBeNull();
   });
 
+  it("setTextFontScale clamps to a safe positive minimum instead of allowing zero/negative", () => {
+    useEditor.getState().setTextCorners([[0, 0], [100, 0], [100, 40], [0, 40]]);
+    useEditor.getState().setTextFontScale(0);
+    expect(useEditor.getState().options.text_font_scale).toBeGreaterThan(0);
+    // a subsequent call must not divide by zero / produce NaN
+    useEditor.getState().setTextFontScale(1.0);
+    expect(Number.isFinite(useEditor.getState().textCorners![0][0])).toBe(true);
+  });
+
   it("resetCorners preserves the current text_font_scale instead of snapping back to 100%", () => {
     useEditor.getState().setDetectedCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);
     useEditor.getState().setCorners([[0, 0], [200, 0], [200, 50], [0, 50]]);

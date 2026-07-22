@@ -106,9 +106,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     return { separateTextPlacement: v };
   }),
   setTextFontScale: (pct) => set((s) => {
-    const options = { ...s.options, text_font_scale: pct };
+    // Clamp defensively at the store layer: a future UI's own 50%-200%
+    // range check can't be trusted to be the only guard, since a value of
+    // 0 (or negative) stored here would divide-by-zero on the NEXT call
+    // (pct / s.options.text_font_scale below), corrupting textCorners with
+    // Infinity/NaN that would then flow into commits, undo history, and the
+    // backend request.
+    const clamped = Math.max(0.01, pct);
+    const options = { ...s.options, text_font_scale: clamped };
     if (!s.textCorners) return { options };
-    return { options, textCorners: scaleQuad(s.textCorners, pct / s.options.text_font_scale) };
+    return { options, textCorners: scaleQuad(s.textCorners, clamped / s.options.text_font_scale) };
   }),
   setDetectedCorners: (c) => set({ detectedCorners: c }),
   setAdjusting: (v) => set(v ? { adjusting: true, retouching: false } : { adjusting: false }),
@@ -140,7 +147,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       // resetting the bars quad without also re-offsetting the text quad
       // would leave it positioned relative to wherever the bars quad used
       // to be (before scale/rotate/drag), orphaned from the freshly-reset
-      // bars quad it's supposed to sit below
+      // bars quad it's supposed to sit below. But re-offsetting alone would
+      // silently reset the text box back to 100% scale even if the user had
+      // dialed in a custom font size elsewhere in the panel -- re-deriving
+      // the quad from offsetTextQuad(detectedCorners) first and then
+      // re-applying the current text_font_scale keeps position-reset and
+      // size-preference independent of each other.
       return {
         corners: s.detectedCorners,
         textCorners: s.separateTextPlacement
