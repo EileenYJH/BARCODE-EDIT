@@ -5,7 +5,7 @@ import cv2
 from pipeline.generate import generate_barcode_fit, GenerateOptions, GenerateResult
 from pipeline.warp import warp_onto, quad_aspect_ratio
 from pipeline.tone import match_tone
-from pipeline.blend import seamless_blend
+from pipeline.blend import seamless_blend, local_tone_correct
 
 @dataclass
 class ReplaceRequest:
@@ -37,8 +37,9 @@ def replace_barcode(req: ReplaceRequest) -> ReplaceResult:
 
     result = seamless_blend(toned, req.image, alpha, mode=req.blend_mode)
 
+    corrected = local_tone_correct(toned, req.image, alpha)
     new_barcode_layer = np.zeros_like(req.image)
-    new_barcode_layer[alpha > 0] = toned[alpha > 0]
+    new_barcode_layer[alpha > 0] = corrected[alpha > 0]
 
     return ReplaceResult(
         result=result,
