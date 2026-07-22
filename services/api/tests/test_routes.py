@@ -81,3 +81,15 @@ def test_replace_endpoint_rejects_out_of_bounds_text_corners():
     }
     r = client.post("/api/replace", json=payload)
     assert r.status_code == 422
+
+def test_replace_endpoint_rejects_malformed_text_corners_shape():
+    scene, corners, meta = make_scene(warp=False)
+    payload = {
+        "image": ndarray_to_b64(scene),
+        "corners": corners.tolist(),
+        "symbology": "code128", "value": "NEWVALUE",
+        "options": {"show_text": True}, "blend_mode": "normal",
+        "text_corners": [[10, 10], [20, 10], [20, 20]],  # only 3 points
+    }
+    r = client.post("/api/replace", json=payload)
+    assert r.status_code == 422
