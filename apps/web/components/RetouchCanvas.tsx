@@ -30,7 +30,7 @@ export function RetouchCanvas() {
     return () => { cancelled = true; };
   }, [image, result, retouchStrokes, resultMaskStrokes]);
 
-  if (!image || !result || !displaySize) {
+  if (!image || !result) {
     return <div className="flex h-full items-center justify-center text-muted-foreground">Loading...</div>;
   }
 
@@ -62,14 +62,19 @@ export function RetouchCanvas() {
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ width: displaySize.w, height: displaySize.h }}
-      className="border rounded touch-none"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerLeave={onPointerUp}
-    />
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        style={displaySize ? { width: displaySize.w, height: displaySize.h } : { display: "none" }}
+        className="border rounded touch-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+      />
+      {!displaySize && (
+        <div className="flex h-40 w-40 items-center justify-center text-muted-foreground">Loading...</div>
+      )}
+    </div>
   );
 }
