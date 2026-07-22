@@ -200,12 +200,16 @@ def generate_barcode_split(symbology: str, value: str, opts: GenerateOptions,
         full = generate_barcode_fit(symbology, value, opts, target_aspect, target_width_px)
         return full, full.bitmap, None
 
-    fitted_opts, dpi = _solve_fitted_opts(symbology, value, opts, target_aspect, target_width_px)
-    full = _generate_linear(symb, value, fitted_opts, dpi)
-    # generate the SAME bars at the SAME module_height/dpi but without text,
-    # to find exactly how many of the full bitmap's rows are bars (the rest,
-    # at the bottom, is the text row python-barcode adds beneath them)
-    no_text = _generate_linear(symb, value, replace(fitted_opts, show_text=False), dpi)
+    # Fit against the BARS-ONLY aspect (target_aspect is the bars quad's own
+    # aspect ratio): fitting against the combined bars+text aspect, as
+    # generate_barcode_fit does for the single-quad case, would leave the
+    # bars crop's own aspect skewed away from target_aspect by however much
+    # the text row added -- distorting bars once warped onto their own quad.
+    bars_only_opts = replace(opts, show_text=False)
+    bars_only_fitted_opts, dpi = _solve_fitted_opts(symbology, value, bars_only_opts, target_aspect, target_width_px)
+
+    no_text = _generate_linear(symb, value, bars_only_fitted_opts, dpi)
+    full = _generate_linear(symb, value, replace(bars_only_fitted_opts, show_text=True), dpi)
     bars_h = no_text.bitmap.shape[0]
     bars_bitmap = full.bitmap[:bars_h]
     text_bitmap = full.bitmap[bars_h:]

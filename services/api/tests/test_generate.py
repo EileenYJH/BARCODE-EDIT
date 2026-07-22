@@ -113,6 +113,15 @@ def test_generate_barcode_split_returns_none_text_for_qr():
     assert text is None
     assert bars.shape == full.bitmap.shape
 
+def test_generate_barcode_split_fits_bars_crop_to_target_aspect():
+    # the bars crop gets warped onto its own placement quad independently of
+    # the text crop, so ITS aspect ratio must match target_aspect -- not the
+    # combined bars+text bitmap's aspect ratio (which includes extra height
+    # from the text row and would leave the bars distorted once warped)
+    full, bars, text = generate_barcode_split("code128", "HELLO123", GenerateOptions(show_text=True), target_aspect=2.5)
+    bh, bw = bars.shape[:2]
+    assert bw / bh == pytest.approx(2.5, rel=0.05)
+
 def test_font_size_is_capped_for_very_large_module_height():
     mid = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=True))
     mid_no_text = generate_barcode("code128", "ABC1234567", GenerateOptions(module_height=25.0, show_text=False))
