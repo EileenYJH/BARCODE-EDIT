@@ -36,6 +36,17 @@ export function scaleFactorFromDrag(deltaCanvasPx: number): number {
   return Math.max(0.05, 1 + deltaCanvasPx / SCALE_DRAG_SENSITIVITY_PX);
 }
 
+export function quadRotation(corners: Corner[]): number {
+  // average the top and bottom edges' directions as vectors (not just their
+  // angles) so the two average correctly even near the +-pi wraparound
+  const [tl, tr, br, bl] = corners;
+  const topAngle = Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
+  const bottomAngle = Math.atan2(br[1] - bl[1], br[0] - bl[0]);
+  const avgDx = Math.cos(topAngle) + Math.cos(bottomAngle);
+  const avgDy = Math.sin(topAngle) + Math.sin(bottomAngle);
+  return Math.atan2(avgDy, avgDx);
+}
+
 export function straightenQuad(corners: Corner[]): Corner[] {
   // Snaps a keystone/skewed quad back to a perfect rectangle, keeping its
   // center, average size, and average rotation -- so a user fighting with
@@ -52,13 +63,7 @@ export function straightenQuad(corners: Corner[]): Corner[] {
   const rightHeight = Math.hypot(br[0] - tr[0], br[1] - tr[1]);
   const height = (leftHeight + rightHeight) / 2;
 
-  // average the top and bottom edges' directions as vectors (not just their
-  // angles) so the two average correctly even near the +-pi wraparound
-  const topAngle = Math.atan2(tr[1] - tl[1], tr[0] - tl[0]);
-  const bottomAngle = Math.atan2(br[1] - bl[1], br[0] - bl[0]);
-  const avgDx = Math.cos(topAngle) + Math.cos(bottomAngle);
-  const avgDy = Math.sin(topAngle) + Math.sin(bottomAngle);
-  const angle = Math.atan2(avgDy, avgDx);
+  const angle = quadRotation(corners);
 
   const cos = Math.cos(angle), sin = Math.sin(angle);
   const hw = width / 2, hh = height / 2;

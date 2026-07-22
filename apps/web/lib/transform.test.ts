@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { quadCenter, scaleQuad, rotateQuad, offsetTextQuad, scaleFactorFromDrag, straightenQuad } from "./transform";
+import { quadCenter, scaleQuad, rotateQuad, offsetTextQuad, scaleFactorFromDrag, straightenQuad, quadRotation } from "./transform";
 import type { Corner } from "./types";
 
 describe("quadCenter", () => {
@@ -54,6 +54,19 @@ describe("rotateQuad", () => {
       expect(x).toBeCloseTo(corners[i][0], 5);
       expect(y).toBeCloseTo(corners[i][1], 5);
     });
+  });
+});
+
+describe("quadRotation", () => {
+  it("returns 0 for an axis-aligned rectangle", () => {
+    const corners: Corner[] = [[0, 0], [100, 0], [100, 50], [0, 50]];
+    expect(quadRotation(corners)).toBeCloseTo(0, 5);
+  });
+
+  it("matches the angle used to rotate a rectangle via rotateQuad", () => {
+    const rect: Corner[] = [[0, 0], [100, 0], [100, 50], [0, 50]];
+    const rotated = rotateQuad(rect, Math.PI / 6);
+    expect(quadRotation(rotated)).toBeCloseTo(Math.PI / 6, 5);
   });
 });
 
