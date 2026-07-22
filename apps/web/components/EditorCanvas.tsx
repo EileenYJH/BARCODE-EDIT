@@ -6,6 +6,13 @@ import { useEditor } from "@/lib/store";
 import { quadCenter, scaleQuad, rotateQuad } from "@/lib/transform";
 import type { Corner } from "@/lib/types";
 
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 interface DragStart {
   corners: Corner[];
   center: Corner;
@@ -98,7 +105,7 @@ function QuadTransformBox({ corners, scale, color, onUpdateCorner, onMoveQuad, o
         stroke={color}
         strokeWidth={2}
         closed
-        fill="rgba(34,211,238,0.08)"
+        fill={hexToRgba(color, 0.08)}
         draggable
         onDragMove={handleQuadDragMove}
         onDragEnd={() => onCommit()}
