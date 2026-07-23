@@ -122,16 +122,15 @@ def segment_label(img: np.ndarray, barcode_corners: Optional[np.ndarray] = None)
     stage as optional and degrade gracefully.
     """
     try:
+        if barcode_corners is None:
+            raise SegmentationError("barcode_corners is required for segmentation")
+
         predictor, mask_generator = _load_model()
         predictor.set_image(img)
 
-        h, w = img.shape[:2]
-        if barcode_corners is not None:
-            box = _box_from_corners(np.asarray(barcode_corners, dtype=np.float32))
-            masks, _scores, _logits = predictor.predict(box=box[None, :], multimask_output=False)
-            barcode_mask = (np.asarray(masks[0]) > 0).astype(np.uint8) * 255
-        else:
-            barcode_mask = np.zeros((h, w), dtype=np.uint8)
+        box = _box_from_corners(np.asarray(barcode_corners, dtype=np.float32))
+        masks, _scores, _logits = predictor.predict(box=box[None, :], multimask_output=False)
+        barcode_mask = (np.asarray(masks[0]) > 0).astype(np.uint8) * 255
 
         auto_masks = mask_generator.generate(img)
         label_mask = _select_label_mask(auto_masks, barcode_mask)

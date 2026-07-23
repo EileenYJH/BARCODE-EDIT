@@ -110,7 +110,6 @@ class _FakeMaskGenerator:
 
 def test_segment_label_returns_full_result(monkeypatch):
     h, w = 100, 100
-    barcode_box_mask = _square_mask(h, w, 40, 40, 60, 60)
     label_mask = _square_mask(h, w, 20, 20, 80, 80)
     other_region = _square_mask(h, w, 25, 60, 35, 70)          # inside label, not barcode
     outside_region = _square_mask(h, w, 0, 0, 10, 10)          # outside label
@@ -142,5 +141,12 @@ def test_segment_label_wraps_unexpected_errors(monkeypatch):
 
     monkeypatch.setattr(segment, "_load_model", _boom)
     img = np.zeros((10, 10, 3), dtype=np.uint8)
+    corners = np.float32([[1, 1], [5, 1], [5, 5], [1, 5]])
     with pytest.raises(segment.SegmentationError, match="segmentation failed"):
+        segment.segment_label(img, barcode_corners=corners)
+
+
+def test_segment_label_raises_when_no_corners_given(monkeypatch):
+    img = np.zeros((10, 10, 3), dtype=np.uint8)
+    with pytest.raises(segment.SegmentationError, match="barcode_corners"):
         segment.segment_label(img)
