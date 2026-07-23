@@ -84,3 +84,30 @@ def _box_from_corners(corners: np.ndarray) -> np.ndarray:
     x0, y0 = corners.min(axis=0)
     x1, y1 = corners.max(axis=0)
     return np.array([x0, y0, x1, y1], dtype=np.float32)
+
+
+def _select_label_mask(masks: List[dict], barcode_mask: np.ndarray) -> np.ndarray:
+    """Pick the automatic-mask-generator candidate that best encloses the barcode.
+
+    SAM2's automatic mask generator has no notion of "this is the label" --
+    it just returns candidate regions. We heuristically pick the largest
+    candidate that contains at least 90% of the barcode mask's area, on the
+    assumption the label is bigger than and contains the barcode. This is a
+    best-effort MVP; true layout understanding is deferred (see spec).
+    """
+    barcode_area = float((barcode_mask > 0).sum())
+    if barcode_area == 0:
+        return barcode_mask.copy()
+
+    best, best_area = None, -1.0
+    for m in masks:
+        seg = (np.asarray(m["segmentation"]).astype(np.uint8)) * 255
+        overlap = float(np.logical_and(seg > 0, barcode_mask > 0).sum())
+        containment = overlap / barcode_area
+        if containment < 0.9:
+            continue
+        area = float(m.get("area", (seg > 0).sum()))
+        if area > best_area:
+            best, best_area = seg, area
+
+    return best if best is not None else barcode_mask.copy()
