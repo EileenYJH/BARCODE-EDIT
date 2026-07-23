@@ -1,11 +1,15 @@
 from dataclasses import dataclass, field
 from typing import Dict
+import logging
 import numpy as np
 import cv2
 from pipeline.generate import generate_barcode_fit, GenerateOptions, GenerateResult
 from pipeline.warp import warp_onto, quad_aspect_ratio
 from pipeline.tone import match_tone
 from pipeline.blend import seamless_blend
+from pipeline.segment import segment_label, SegmentationError
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ReplaceRequest:
@@ -40,12 +44,26 @@ def replace_barcode(req: ReplaceRequest) -> ReplaceResult:
     new_barcode_layer = np.zeros_like(req.image)
     new_barcode_layer[alpha > 0] = toned[alpha > 0]
 
+    layers = {
+        "original": req.image.copy(),
+        "new_barcode": new_barcode_layer,
+        "mask": cv2.cvtColor(alpha, cv2.COLOR_GRAY2BGR),
+    }
+
+    try:
+        seg = segment_label(req.image, req.corners)
+        layers["label_mask"] = cv2.cvtColor(seg.label_mask, cv2.COLOR_GRAY2BGR)
+        layers["sam_barcode_mask"] = cv2.cvtColor(seg.barcode_mask, cv2.COLOR_GRAY2BGR)
+        if seg.candidate_regions:
+            flattened = np.zeros_like(seg.label_mask)
+            for region in seg.candidate_regions:
+                flattened = cv2.bitwise_or(flattened, region)
+            layers["candidate_regions"] = cv2.cvtColor(flattened, cv2.COLOR_GRAY2BGR)
+    except SegmentationError:
+        logger.warning("SAM2 segmentation unavailable, skipping", exc_info=True)
+
     return ReplaceResult(
         result=result,
         svg=gen.svg,
-        layers={
-            "original": req.image.copy(),
-            "new_barcode": new_barcode_layer,
-            "mask": cv2.cvtColor(alpha, cv2.COLOR_GRAY2BGR),
-        },
+        layers=layers,
     )
