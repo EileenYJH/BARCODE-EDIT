@@ -22,22 +22,30 @@ def detect(req: DetectRequest):
         for d in dets
     ])
 
+def _validate_corners_in_bounds(corners: np.ndarray, w: int, h: int, label: str):
+    if (corners[:, 0].min() < 0 or corners[:, 1].min() < 0 or
+            corners[:, 0].max() > w or corners[:, 1].max() > h):
+        raise HTTPException(status_code=422, detail=f"{label} out of bounds")
+
 @router.post("/replace", response_model=ReplaceResponse)
 def replace(req: ReplaceRequestIn):
     try:
         img = b64_to_ndarray(req.image)
     except ValueError:
         raise HTTPException(status_code=415, detail="unreadable image")
-    corners = np.float32(req.corners)
     h, w = img.shape[:2]
-    if (corners[:, 0].min() < 0 or corners[:, 1].min() < 0 or
-            corners[:, 0].max() > w or corners[:, 1].max() > h):
-        raise HTTPException(status_code=422, detail="corners out of bounds")
+    corners = np.float32(req.corners)
+    _validate_corners_in_bounds(corners, w, h, "corners")
+    text_corners = None
+    if req.text_corners is not None:
+        text_corners = np.float32(req.text_corners)
+        _validate_corners_in_bounds(text_corners, w, h, "text_corners")
     opts = GenerateOptions(**req.options.model_dump())
     try:
         res = replace_barcode(ReplaceRequest(
             image=img, corners=corners, symbology=req.symbology,
             value=req.value, options=opts, blend_mode=req.blend_mode,
+            text_corners=text_corners,
         ))
     except GenerateError as e:
         raise HTTPException(status_code=422, detail=str(e))

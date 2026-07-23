@@ -1,59 +1,84 @@
 import { create } from "zustand";
-import type { Corner, BarcodeOptions, ReplaceResponse, EditorSnapshot } from "./types";
-
-interface LayerState { visible: boolean; opacity: number; }
+import type { Corner, BarcodeOptions, ReplaceResponse, EditorSnapshot, ActiveLayer, Stroke } from "./types";
+import { offsetTextQuad, scaleQuad, rotateQuad } from "./transform";
 
 interface EditorState {
   image: string | null;
   corners: Corner[] | null;
+  textCorners: Corner[] | null;
+  separateTextPlacement: boolean;
   detectedCorners: Corner[] | null;
   adjusting: boolean;
+  retouching: boolean;
+  activeLayer: ActiveLayer;
+  tool: "brush" | "eraser";
+  brushSize: number;
+  brushColor: string;
+  brushOpacity: number;
   symbology: string;
   value: string;
   options: BarcodeOptions;
   blendMode: string;
   result: ReplaceResponse | null;
-  layers: Record<string, LayerState>;
+  retouchStrokes: Stroke[];
+  resultMaskStrokes: Stroke[];
   history: EditorSnapshot[];
   historyIndex: number;
   setImage: (img: string | null) => void;
   setCorners: (c: Corner[] | null) => void;
   updateCorner: (i: number, c: Corner) => void;
+  setTextCorners: (c: Corner[] | null) => void;
+  updateTextCorner: (i: number, c: Corner) => void;
+  moveTextQuad: (delta: Corner) => void;
+  rotateTextQuad: (deltaRad: number) => void;
+  setSeparateTextPlacement: (v: boolean) => void;
+  setTextFontScale: (pct: number) => void;
   setDetectedCorners: (c: Corner[] | null) => void;
   setAdjusting: (v: boolean) => void;
+  setRetouching: (v: boolean) => void;
+  setActiveLayer: (l: ActiveLayer) => void;
+  setTool: (t: "brush" | "eraser") => void;
+  setBrushSize: (n: number) => void;
+  setBrushColor: (c: string) => void;
+  setBrushOpacity: (n: number) => void;
+  addStroke: (stroke: Stroke) => void;
   moveQuad: (delta: Corner) => void;
   resetCorners: () => void;
   setField: <K extends keyof EditorState>(k: K, v: EditorState[K]) => void;
   setOption: <K extends keyof BarcodeOptions>(k: K, v: BarcodeOptions[K]) => void;
   setResult: (r: ReplaceResponse | null) => void;
-  setLayer: (name: string, patch: Partial<LayerState>) => void;
   commit: () => void;
   undo: () => void;
   redo: () => void;
 }
 
-const defaultLayers = {
-  original: { visible: true, opacity: 1 },
-  new_barcode: { visible: true, opacity: 1 },
-  result: { visible: true, opacity: 1 },
-};
-
 export const useEditor = create<EditorState>((set, get) => ({
   image: null,
   corners: null,
+  textCorners: null,
+  separateTextPlacement: false,
   detectedCorners: null,
   adjusting: true,
+  retouching: false,
+  activeLayer: "retouch",
+  tool: "brush",
+  brushSize: 12,
+  brushColor: "#000000",
+  brushOpacity: 1,
   symbology: "code128",
   value: "",
-  options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15 },
+  options: { show_text: true, quiet_zone: 6.5, module_width: 0.2, module_height: 15, text_font_scale: 1.0 },
   blendMode: "normal",
   result: null,
-  layers: defaultLayers,
+  retouchStrokes: [],
+  resultMaskStrokes: [],
   history: [],
   historyIndex: -1,
   setImage: (img) => set({
     image: img, corners: null, result: null,
-    detectedCorners: null, adjusting: true,
+    textCorners: null, separateTextPlacement: false,
+    detectedCorners: null, adjusting: true, retouching: false,
+    retouchStrokes: [], resultMaskStrokes: [],
     history: [], historyIndex: -1,
   }),
   setCorners: (c) => set({ corners: c }),
@@ -63,28 +88,111 @@ export const useEditor = create<EditorState>((set, get) => ({
     next[i] = c;
     return { corners: next };
   }),
+  setTextCorners: (c) => set({ textCorners: c }),
+  updateTextCorner: (i, c) => set((s) => {
+    if (!s.textCorners) return s;
+    const next = s.textCorners.slice();
+    next[i] = c;
+    return { textCorners: next };
+  }),
+  moveTextQuad: (delta) => set((s) => {
+    if (!s.textCorners) return s;
+    const [dx, dy] = delta;
+    return { textCorners: s.textCorners.map(([x, y]) => [x + dx, y + dy] as Corner) };
+  }),
+  rotateTextQuad: (deltaRad) => set((s) => {
+    if (!s.textCorners) return s;
+    return { textCorners: rotateQuad(s.textCorners, deltaRad) };
+  }),
+  setSeparateTextPlacement: (v) => set((s) => {
+    if (v && !s.textCorners && s.corners) {
+      return { separateTextPlacement: true, textCorners: offsetTextQuad(s.corners) };
+    }
+    return { separateTextPlacement: v };
+  }),
+  setTextFontScale: (pct) => set((s) => {
+    // Clamp defensively at the store layer: a future UI's own 50%-200%
+    // range check can't be trusted to be the only guard, since a value of
+    // 0 (or negative) stored here would divide-by-zero on the NEXT call
+    // (pct / s.options.text_font_scale below), corrupting textCorners with
+    // Infinity/NaN that would then flow into commits, undo history, and the
+    // backend request.
+    const clamped = Math.max(0.01, pct);
+    const options = { ...s.options, text_font_scale: clamped };
+    if (!s.textCorners) return { options };
+    return { options, textCorners: scaleQuad(s.textCorners, clamped / s.options.text_font_scale) };
+  }),
   setDetectedCorners: (c) => set({ detectedCorners: c }),
-  setAdjusting: (v) => set({ adjusting: v }),
+  setAdjusting: (v) => set(v ? { adjusting: true, retouching: false } : { adjusting: false }),
+  setRetouching: (v) => set(v ? { retouching: true, adjusting: false } : { retouching: false }),
+  setActiveLayer: (l) => set({ activeLayer: l }),
+  setTool: (t) => set({ tool: t }),
+  setBrushSize: (n) => set({ brushSize: n }),
+  setBrushColor: (c) => set({ brushColor: c }),
+  setBrushOpacity: (n) => set({ brushOpacity: n }),
+  addStroke: (stroke) => {
+    set((s) => {
+      if (stroke.tool === "brush") {
+        return { retouchStrokes: [...s.retouchStrokes, stroke] };
+      }
+      return s.activeLayer === "retouch"
+        ? { retouchStrokes: [...s.retouchStrokes, stroke] }
+        : { resultMaskStrokes: [...s.resultMaskStrokes, stroke] };
+    });
+    get().commit();
+  },
   moveQuad: (delta) => set((s) => {
     if (!s.corners) return s;
     const [dx, dy] = delta;
     return { corners: s.corners.map(([x, y]) => [x + dx, y + dy] as Corner) };
   }),
   resetCorners: () => {
-    set((s) => (s.detectedCorners ? { corners: s.detectedCorners } : s));
+    set((s) => {
+      if (!s.detectedCorners) return s;
+      // resetting the bars quad without also re-offsetting the text quad
+      // would leave it positioned relative to wherever the bars quad used
+      // to be (before scale/rotate/drag), orphaned from the freshly-reset
+      // bars quad it's supposed to sit below. But re-offsetting alone would
+      // silently reset the text box back to 100% scale even if the user had
+      // dialed in a custom font size elsewhere in the panel -- re-deriving
+      // the quad from offsetTextQuad(detectedCorners) first and then
+      // re-applying the current text_font_scale keeps position-reset and
+      // size-preference independent of each other.
+      return {
+        corners: s.detectedCorners,
+        textCorners: s.separateTextPlacement
+          ? scaleQuad(offsetTextQuad(s.detectedCorners), s.options.text_font_scale)
+          : s.textCorners,
+      };
+    });
     get().commit();
   },
-  setField: (k, v) => set({ [k]: v } as Partial<EditorState>),
-  setOption: (k, v) => set((s) => ({ options: { ...s.options, [k]: v } })),
+  setField: (k, v) => set((s) => {
+    // switching to QR removes the "Separate text placement" toggle (QR has
+    // no separate readable-text caption in this app), which would otherwise
+    // leave separateTextPlacement stuck true with no UI control left to
+    // turn it off, and an orphaned text-placement box still shown on canvas
+    if (k === "symbology" && v === "qr" && s.separateTextPlacement) {
+      return { [k]: v, separateTextPlacement: false } as Partial<EditorState>;
+    }
+    return { [k]: v } as Partial<EditorState>;
+  }),
+  setOption: (k, v) => set((s) => {
+    const options = { ...s.options, [k]: v };
+    // turning off "Show text" removes the "Separate text placement" toggle
+    // too -- same orphaned-state reasoning as the symbology case above
+    if (k === "show_text" && v === false && s.separateTextPlacement) {
+      return { options, separateTextPlacement: false };
+    }
+    return { options };
+  }),
   setResult: (r) => set({ result: r }),
-  setLayer: (name, patch) => set((s) => ({
-    layers: { ...s.layers, [name]: { ...s.layers[name], ...patch } },
-  })),
   commit: () => set((s) => {
     const snapshot: EditorSnapshot = {
-      corners: s.corners, symbology: s.symbology, value: s.value,
+      corners: s.corners, textCorners: s.textCorners, separateTextPlacement: s.separateTextPlacement,
+      symbology: s.symbology, value: s.value,
       options: s.options, blendMode: s.blendMode, result: s.result,
-      layers: s.layers,
+      retouchStrokes: s.retouchStrokes, resultMaskStrokes: s.resultMaskStrokes,
     };
     const truncated = s.history.slice(0, s.historyIndex + 1);
     const history = [...truncated, snapshot];

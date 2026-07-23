@@ -31,6 +31,22 @@ def _order_quad(pts: np.ndarray) -> np.ndarray:
     return np.float32([tl, tr, br, bl])
 
 
+def _pad_quad(quad: np.ndarray, margin: float = 0.15) -> np.ndarray:
+    """Expand a quad outward from its own centre by `margin` (a fraction of
+    its own size), preserving orientation and aspect.
+
+    Classical detection (cv2.barcode's detect()) reliably finds the bar
+    region itself, but that's inset from the barcode's true visual
+    footprint -- its quiet zone margins and any printed value/text below
+    the bars. Replacing a barcode using an un-padded detection as the
+    placement quad leaves a thin sliver of the OLD barcode's own edge
+    (a bar or text) visible just outside the new placement -- confirmed via
+    a real product photo where the old barcode's top bar edge peeked
+    through by a couple of pixels right above the new one.
+    """
+    center = quad.mean(axis=0)
+    return center + (quad - center) * (1.0 + margin)
+
 def _bbox(corners: np.ndarray) -> tuple:
     x, y, w, h = cv2.boundingRect(corners.astype(np.int32))
     return (int(x), int(y), int(w), int(h))
@@ -104,13 +120,15 @@ def detect_barcodes(img: np.ndarray) -> List[Detection]:
                 if d < best_d:
                     best_d, typ, val = d, z_type, z_val
             confidence = 0.85 if val is not None else 0.6
-            dets.append(Detection(corners=q, type=typ, value=val,
-                                  confidence=confidence, bbox=_bbox(q)))
+            padded = _pad_quad(q)
+            dets.append(Detection(corners=padded, type=typ, value=val,
+                                  confidence=confidence, bbox=_bbox(padded)))
     else:
         for corners, z_type, z_val in zbar:
             if corners is not None:
-                dets.append(Detection(corners=corners, type=z_type, value=z_val,
-                                      confidence=0.7, bbox=_bbox(corners)))
+                padded = _pad_quad(corners)
+                dets.append(Detection(corners=padded, type=z_type, value=z_val,
+                                      confidence=0.7, bbox=_bbox(padded)))
 
     dets.sort(key=lambda d: d.confidence, reverse=True)
     return dets

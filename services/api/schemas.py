@@ -19,6 +19,7 @@ class OptionsIn(BaseModel):
     quiet_zone: float = 6.5
     module_width: float = 0.2
     module_height: float = 15.0
+    text_font_scale: float = 1.0
 
 class ReplaceRequestIn(BaseModel):
     image: str
@@ -27,6 +28,7 @@ class ReplaceRequestIn(BaseModel):
     value: str
     options: OptionsIn = OptionsIn()
     blend_mode: str = "normal"
+    text_corners: Optional[List[List[float]]] = Field(None, min_length=4, max_length=4)
 
 class ReplaceResponse(BaseModel):
     result: str

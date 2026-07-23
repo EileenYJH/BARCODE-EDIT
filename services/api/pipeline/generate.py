@@ -1,5 +1,6 @@
 from dataclasses import dataclass, replace
 from io import BytesIO
+from typing import Optional, Tuple
 import numpy as np
 import cv2
 from PIL import Image
@@ -17,6 +18,12 @@ class GenerateOptions:
     quiet_zone: float = 6.5      # mm, python-barcode units
     module_width: float = 0.2    # mm
     module_height: float = 15.0  # mm
+    text_font_scale: float = 1.0 # multiplier on the proportional font-size
+                                  # default, independent of module_height --
+                                  # lets a separately-placed text region's
+                                  # size be controlled without affecting bars
+                                  # sizing. 1.0 reproduces today's exact
+                                  # output for every existing caller.
 
 @dataclass
 class GenerateResult:
@@ -25,18 +32,41 @@ class GenerateResult:
 
 _LINEAR = {"ean13": "ean13", "ean8": "ean8", "upca": "upca",
            "code128": "code128", "code39": "code39"}
+_RENDER_DPI = 450  # 1.5x python-barcode's ImageWriter default (300); a floor
+                    # for callers that don't know the eventual placement size
 
 def _pil_to_bgr(img: Image.Image) -> np.ndarray:
     rgb = np.array(img.convert("RGB"))
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
-def _generate_linear(symb: str, value: str, opts: GenerateOptions) -> GenerateResult:
+def _proportional_font_size(module_height: float) -> float:
+    """python-barcode's ImageWriter defaults to a fixed 10pt font regardless
+    of module_height, so text stays the same absolute size while bars grow
+    or shrink -- looking oversized on short bars and undersized on tall ones.
+    Scale it to the library's own default ratio (10pt at 15mm), clamped to a
+    sane range so extreme module_height values (from generate_barcode_fit's
+    aspect-matching) can't blow the text up past legible/non-overlapping
+    bounds or shrink it to nothing.
+    """
+    return max(6.0, min(14.0, 10.0 * module_height / 15.0))
+
+def _generate_linear(symb: str, value: str, opts: GenerateOptions, dpi: float = _RENDER_DPI) -> GenerateResult:
     try:
         cls = barcode.get_barcode_class(_LINEAR[symb])
     except Exception as e:
         raise GenerateError(str(e))
+    # dpi (not module_width/height/quiet_zone) is how callers rescale pixel
+    # resolution: it scales the whole rendered page uniformly, including
+    # text, without touching any of the mm-based options that
+    # _proportional_font_size and the aspect-fit solve above are tuned
+    # against. Rescaling module_width/height/quiet_zone directly instead
+    # would shift module_height into a different font-size clamping regime
+    # than what the aspect-fit solve assumed, throwing off the exact aspect
+    # ratio it just solved for (confirmed: this broke an aspect-ratio test).
     common = {"write_text": opts.show_text, "quiet_zone": opts.quiet_zone,
-              "module_width": opts.module_width, "module_height": opts.module_height}
+              "module_width": opts.module_width, "module_height": opts.module_height,
+              "font_size": _proportional_font_size(opts.module_height) * opts.text_font_scale,
+              "dpi": dpi}
     try:
         png_buf = BytesIO()
         obj = cls(value, writer=ImageWriter())
@@ -74,8 +104,63 @@ def generate_barcode(symbology: str, value: str, opts: GenerateOptions) -> Gener
         return _generate_linear(symb, value, opts)
     raise GenerateError(f"unsupported symbology: {symbology}")
 
+def _solve_fitted_opts(symbology: str, value: str, opts: GenerateOptions,
+                        target_aspect: float,
+                        target_width_px: float = None) -> Tuple[GenerateOptions, float]:
+    """Shared by generate_barcode_fit and generate_barcode_split: solves the
+    module_height that matches target_aspect, and the dpi that sizes the
+    bitmap to target_width_px (if given). Returns (fitted_opts, dpi) that,
+    passed to _generate_linear, reproduce the exact bitmap either caller
+    would use -- kept in one place so both callers stay in agreement about
+    what "the bars, at the size that fits this placement" actually means.
+    """
+    symb = symbology.lower().replace("-", "")
+
+    # module_height affects only pixel height (confirmed empirically: pixel
+    # width tracks module_width/quiet_zone only), but with a fixed additive
+    # offset (quiet-zone margins etc.), not pure proportionality within a
+    # given font size. `_proportional_font_size` is itself piecewise in
+    # module_height (linear in the middle, clamped constant at each end), so
+    # height-vs-module_height is only *exactly* linear within one of those
+    # three regimes at a time -- not across all of them. Probe within
+    # whichever regime the answer actually lands in, so the two-point fit
+    # stays exact rather than averaging across a clamp boundary.
+    def solve(h1: float, h2: float) -> float:
+        probe1 = generate_barcode(symbology, value, replace(opts, module_height=h1))
+        probe2 = generate_barcode(symbology, value, replace(opts, module_height=h2))
+        ph1, pw = probe1.bitmap.shape[:2]
+        ph2, _ = probe2.bitmap.shape[:2]
+        slope = (ph2 - ph1) / (h2 - h1)
+        if slope == 0:
+            return h1
+        intercept = ph1 - slope * h1
+        target_height_px = pw / target_aspect
+        return max((target_height_px - intercept) / slope, 0.1)
+
+    UNCLAMPED_LO, UNCLAMPED_HI = 9.0, 21.0  # where _proportional_font_size clamps
+    module_height = solve(12.0, 18.0)  # first pass, probing the unclamped regime
+    if module_height < UNCLAMPED_LO:
+        module_height = solve(4.0, 7.0)  # re-probe entirely inside the clamped-low regime
+    elif module_height > UNCLAMPED_HI:
+        module_height = solve(25.0, 40.0)  # re-probe entirely inside the clamped-high regime
+
+    fitted_opts = replace(opts, module_height=module_height)
+
+    dpi = _RENDER_DPI
+    if target_width_px and target_width_px > 0:
+        probe = _generate_linear(symb, value, fitted_opts)
+        bw = probe.bitmap.shape[1]
+        oversample = 1.5  # headroom above the target so the eventual warp
+                           # is a mild upscale at worst, never a big one
+        scale = (target_width_px * oversample) / bw
+        if abs(scale - 1.0) > 0.05:
+            dpi = _RENDER_DPI * scale
+
+    return fitted_opts, dpi
+
 def generate_barcode_fit(symbology: str, value: str, opts: GenerateOptions,
-                          target_aspect: float) -> GenerateResult:
+                          target_aspect: float,
+                          target_width_px: float = None) -> GenerateResult:
     """Like generate_barcode, but for linear symbologies solves for the
     module_height that makes the generated bitmap's own aspect ratio match
     target_aspect (the real shape of the quad it will be warped onto).
@@ -86,28 +171,67 @@ def generate_barcode_fit(symbology: str, value: str, opts: GenerateOptions,
     denser/thinner in one direction, sometimes visibly wavy). QR is skipped:
     it's inherently square, and its target quad's shape is already exactly
     reproduced by the perspective warp itself.
+
+    target_width_px, if given (the actual on-photo placement's pixel width),
+    additionally rescales the bitmap to roughly match that size with modest
+    headroom. A fixed oversample factor can't work for every placement: too
+    small relative to a large close-up blurs on the upscale, too large
+    relative to a small placement forces an extreme downscale that aliases
+    the bars' fine periodic pattern badly enough to break scanning entirely
+    (confirmed empirically). Scaling relative to the actual target keeps the
+    eventual warp a mild up- or down-scale either way.
     """
     symb = symbology.lower().replace("-", "")
     if symb not in _LINEAR or target_aspect <= 0:
         return generate_barcode(symbology, value, opts)
+    fitted_opts, dpi = _solve_fitted_opts(symbology, value, opts, target_aspect, target_width_px)
+    return _generate_linear(symb, value, fitted_opts, dpi)
 
-    # module_height affects only pixel height (confirmed empirically: pixel
-    # width tracks module_width/quiet_zone only), but with a fixed additive
-    # offset (quiet-zone margins etc.), not pure proportionality. Two probes
-    # at different module_height values pin down that line exactly, so a
-    # third render lands on the target aspect ratio precisely.
-    h1, h2 = 10.0, 25.0
-    probe1 = generate_barcode(symbology, value, replace(opts, module_height=h1))
-    probe2 = generate_barcode(symbology, value, replace(opts, module_height=h2))
-    ph1, pw = probe1.bitmap.shape[:2]
-    ph2, _ = probe2.bitmap.shape[:2]
+def generate_barcode_split(symbology: str, value: str, opts: GenerateOptions,
+                            target_aspect: float,
+                            target_width_px: float = None
+                            ) -> Tuple[GenerateResult, np.ndarray, Optional[np.ndarray]]:
+    """Like generate_barcode_fit, but additionally splits the bitmap into its
+    bars portion and its text portion, for placing each onto independent
+    placement quads (so an existing printed caption next to the barcode,
+    like "S/N:", can be left untouched while only the value text after it is
+    replaced).
 
-    slope = (ph2 - ph1) / (h2 - h1)
-    if slope == 0:
-        return probe1  # module_height has no effect for this input; nothing to solve
+    Returns (full_result, bars_bitmap, text_bitmap). text_bitmap is None when
+    there's no text to split out (QR, or show_text off) -- bars_bitmap is
+    then the whole bitmap, same as generate_barcode_fit's result.
+    """
+    symb = symbology.lower().replace("-", "")
+    if symb not in _LINEAR or target_aspect <= 0 or not opts.show_text:
+        full = generate_barcode_fit(symbology, value, opts, target_aspect, target_width_px)
+        return full, full.bitmap, None
 
-    intercept = ph1 - slope * h1
-    target_height_px = pw / target_aspect
-    module_height = max((target_height_px - intercept) / slope, 0.1)
+    # Fit against the BARS-ONLY aspect (target_aspect is the bars quad's own
+    # aspect ratio): fitting against the combined bars+text aspect, as
+    # generate_barcode_fit does for the single-quad case, would leave the
+    # bars crop's own aspect skewed away from target_aspect by however much
+    # the text row added -- distorting bars once warped onto their own quad.
+    bars_only_opts = replace(opts, show_text=False)
+    bars_only_fitted_opts, dpi = _solve_fitted_opts(symbology, value, bars_only_opts, target_aspect, target_width_px)
 
-    return generate_barcode(symbology, value, replace(opts, module_height=module_height))
+    no_text = _generate_linear(symb, value, bars_only_fitted_opts, dpi)
+    full = _generate_linear(symb, value, replace(bars_only_fitted_opts, show_text=True), dpi)
+    bars_h = no_text.bitmap.shape[0]
+    # bars_bitmap is always the actual bars-only render, never a crop of
+    # full.bitmap -- python-barcode anchors text to a descender baseline, so
+    # a large enough text_font_scale can push ascenders UP above bars_h
+    # (confirmed via direct reproduction: text_font_scale=1.8 bled text
+    # pixels into rows 241-265 of what should have been a pure-bars crop).
+    # Slicing from full.bitmap let that bleed corrupt the bars crop; using
+    # no_text.bitmap directly is immune to it by construction.
+    bars_bitmap = no_text.bitmap
+    # text_bitmap must start wherever text pixels actually begin, which
+    # shifts with text_font_scale -- detect it by diffing full.bitmap
+    # against the known-clean no_text.bitmap over their shared rows, rather
+    # than assuming it's always exactly bars_h.
+    shared = min(bars_h, full.bitmap.shape[0])
+    diff_rows = np.any(full.bitmap[:shared] != no_text.bitmap[:shared], axis=(1, 2))
+    bleeding = np.where(diff_rows)[0]
+    text_top = int(bleeding.min()) if bleeding.size else bars_h
+    text_bitmap = full.bitmap[text_top:]
+    return full, bars_bitmap, text_bitmap

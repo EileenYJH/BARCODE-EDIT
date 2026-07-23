@@ -13,6 +13,7 @@ export interface BarcodeOptions {
   quiet_zone: number;
   module_width: number;
   module_height: number;
+  text_font_scale: number;
 }
 
 export interface ReplaceResponse {
@@ -21,12 +22,25 @@ export interface ReplaceResponse {
   layers: Record<"original" | "new_barcode" | "mask", string>;
 }
 
+export type ActiveLayer = "retouch" | "result";
+
+export interface Stroke {
+  tool: "brush" | "eraser";
+  color: string;
+  size: number;
+  opacity: number;
+  points: Corner[];
+}
+
 export interface EditorSnapshot {
   corners: Corner[] | null;
+  textCorners: Corner[] | null;
+  separateTextPlacement: boolean;
   symbology: string;
   value: string;
   options: BarcodeOptions;
   blendMode: string;
   result: ReplaceResponse | null;
-  layers: Record<string, { visible: boolean; opacity: number }>;
+  retouchStrokes: Stroke[];
+  resultMaskStrokes: Stroke[];
 }
