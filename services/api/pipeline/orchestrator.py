@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, List, Tuple
 import logging
 import numpy as np
 import cv2
@@ -25,6 +25,18 @@ class ReplaceResult:
     result: np.ndarray
     svg: str
     layers: Dict[str, np.ndarray]
+
+def _flatten_candidate_regions(regions: List[np.ndarray], shape: Tuple[int, int]) -> np.ndarray:
+    """OR-combine candidate region masks into a single flat mask.
+
+    Returns an all-zero mask of `shape` when `regions` is empty, so callers
+    can always populate the "candidate_regions" layer key on a successful
+    segmentation, even when no candidates survived the label heuristics.
+    """
+    flattened = np.zeros(shape, dtype=np.uint8)
+    for region in regions:
+        flattened = cv2.bitwise_or(flattened, region)
+    return flattened
 
 def replace_barcode(req: ReplaceRequest) -> ReplaceResult:
     h, w = req.image.shape[:2]
@@ -54,11 +66,8 @@ def replace_barcode(req: ReplaceRequest) -> ReplaceResult:
         seg = segment_label(req.image, req.corners)
         layers["label_mask"] = cv2.cvtColor(seg.label_mask, cv2.COLOR_GRAY2BGR)
         layers["sam_barcode_mask"] = cv2.cvtColor(seg.barcode_mask, cv2.COLOR_GRAY2BGR)
-        if seg.candidate_regions:
-            flattened = np.zeros_like(seg.label_mask)
-            for region in seg.candidate_regions:
-                flattened = cv2.bitwise_or(flattened, region)
-            layers["candidate_regions"] = cv2.cvtColor(flattened, cv2.COLOR_GRAY2BGR)
+        flattened = _flatten_candidate_regions(seg.candidate_regions, seg.label_mask.shape)
+        layers["candidate_regions"] = cv2.cvtColor(flattened, cv2.COLOR_GRAY2BGR)
     except SegmentationError:
         logger.warning("SAM2 segmentation unavailable, skipping", exc_info=True)
 
