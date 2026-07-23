@@ -2,10 +2,12 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from imgio import b64_to_ndarray, ndarray_to_b64
 from schemas import (DetectRequest, DetectResponse, DetectionOut,
-                     ReplaceRequestIn, ReplaceResponse)
+                     ReplaceRequestIn, ReplaceResponse,
+                     SegmentRequest, SegmentResponse)
 from pipeline.detect import detect_barcodes
 from pipeline.generate import GenerateOptions, GenerateError
 from pipeline.orchestrator import replace_barcode, ReplaceRequest
+from pipeline.segment import segment_label, SegmentationError
 
 router = APIRouter(prefix="/api")
 
@@ -45,4 +47,21 @@ def replace(req: ReplaceRequestIn):
         result=ndarray_to_b64(res.result),
         svg=res.svg,
         layers={k: ndarray_to_b64(v) for k, v in res.layers.items()},
+    )
+
+@router.post("/segment", response_model=SegmentResponse)
+def segment(req: SegmentRequest):
+    try:
+        img = b64_to_ndarray(req.image)
+    except ValueError:
+        raise HTTPException(status_code=415, detail="unreadable image")
+    corners = np.float32(req.corners) if req.corners is not None else None
+    try:
+        res = segment_label(img, barcode_corners=corners)
+    except SegmentationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return SegmentResponse(
+        label_mask=ndarray_to_b64(res.label_mask),
+        barcode_mask=ndarray_to_b64(res.barcode_mask),
+        candidate_regions=[ndarray_to_b64(r) for r in res.candidate_regions],
     )

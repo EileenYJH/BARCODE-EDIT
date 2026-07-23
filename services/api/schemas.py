@@ -32,3 +32,12 @@ class ReplaceResponse(BaseModel):
     result: str
     svg: str
     layers: Dict[str, str]
+
+class SegmentRequest(BaseModel):
+    image: str  # data URL
+    corners: Optional[List[List[float]]] = None  # optional barcode-box prompt
+
+class SegmentResponse(BaseModel):
+    label_mask: str
+    barcode_mask: str
+    candidate_regions: List[str]

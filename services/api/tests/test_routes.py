@@ -2,6 +2,9 @@ from fastapi.testclient import TestClient
 from main import app
 from imgio import ndarray_to_b64
 from tests.fixtures import make_scene
+import numpy as np
+from unittest.mock import patch
+from pipeline import segment
 
 client = TestClient(app)
 
@@ -40,4 +43,29 @@ def test_replace_invalid_ean13_returns_422():
         "options": {}, "blend_mode": "normal",
     }
     r = client.post("/api/replace", json=payload)
+    assert r.status_code == 422
+
+def test_segment_endpoint_returns_masks():
+    scene, corners, meta = make_scene(warp=False)
+    h, w = scene.shape[:2]
+    fake_result = segment.SegmentationResult(
+        label_mask=np.full((h, w), 255, dtype=np.uint8),
+        barcode_mask=np.full((h, w), 255, dtype=np.uint8),
+        candidate_regions=[np.full((h, w), 255, dtype=np.uint8)],
+    )
+    payload = {"image": ndarray_to_b64(scene), "corners": corners.tolist()}
+    with patch("routes.segment_label", return_value=fake_result):
+        r = client.post("/api/segment", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["label_mask"].startswith("data:image/png;base64,")
+    assert body["barcode_mask"].startswith("data:image/png;base64,")
+    assert len(body["candidate_regions"]) == 1
+
+
+def test_segment_endpoint_returns_422_when_sam2_unavailable():
+    scene, corners, meta = make_scene(warp=False)
+    payload = {"image": ndarray_to_b64(scene), "corners": corners.tolist()}
+    r = client.post("/api/segment", json=payload)
+    # No weights/torch present in the default test env.
     assert r.status_code == 422
