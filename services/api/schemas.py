@@ -35,7 +35,7 @@ class ReplaceResponse(BaseModel):
 
 class SegmentRequest(BaseModel):
     image: str  # data URL
-    corners: Optional[List[List[float]]] = None  # optional barcode-box prompt
+    corners: Optional[List[List[float]]] = None  # barcode-box prompt; segmentation 422s if omitted
 
 class SegmentResponse(BaseModel):
     label_mask: str

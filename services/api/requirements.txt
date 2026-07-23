@@ -11,7 +11,8 @@ pytest==9.1.1
 httpx==0.28.1
 
 # SAM2 / torch (Python 3.14 compat spike, Task 1 of vector-pipeline-m3 plan)
-# torch CPU wheels are not on PyPI; install with:
-#   pip install torch==2.13.0+cpu --index-url https://download.pytorch.org/whl/cpu
+# torch CPU wheels aren't on plain PyPI; this extra index makes
+# `pip install -r requirements.txt` resolve them without a separate flag.
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0+cpu
 git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4

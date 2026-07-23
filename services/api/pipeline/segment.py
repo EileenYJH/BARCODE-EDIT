@@ -138,9 +138,12 @@ def segment_label(img: np.ndarray, barcode_corners: Optional[np.ndarray] = None)
     """Segment the full label boundary, a refined barcode mask, and candidate
     unclassified sub-regions from a product photo.
 
-    Raises SegmentationError on any failure (missing weights, unsupported
-    environment, or unexpected model error) -- callers should treat this
-    stage as optional and degrade gracefully.
+    barcode_corners is a (4,2) quad used as SAM2's box prompt for the barcode
+    sub-region. It's typed Optional so callers can omit it without a
+    TypeError, but it's effectively required: passing None raises
+    SegmentationError immediately, same as any other failure (missing
+    weights, unsupported environment, unexpected model error) -- callers
+    should treat this whole stage as optional and degrade gracefully.
     """
     try:
         if barcode_corners is None:
