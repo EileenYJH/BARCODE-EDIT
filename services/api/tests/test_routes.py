@@ -69,3 +69,15 @@ def test_segment_endpoint_returns_422_when_sam2_unavailable():
     r = client.post("/api/segment", json=payload)
     # No weights/torch present in the default test env.
     assert r.status_code == 422
+
+
+def test_segment_endpoint_returns_422_on_malformed_corners():
+    scene, corners, meta = make_scene(warp=False)
+    payload = {
+        "image": ndarray_to_b64(scene),
+        # ragged inner-list lengths -> np.float32() raises ValueError
+        # ("inhomogeneous shape"), not a clean HTTP-level validation error.
+        "corners": [[1, 2], [3, 4, 5]],
+    }
+    r = client.post("/api/segment", json=payload)
+    assert r.status_code == 422

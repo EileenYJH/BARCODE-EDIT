@@ -55,7 +55,12 @@ def segment(req: SegmentRequest):
         img = b64_to_ndarray(req.image)
     except ValueError:
         raise HTTPException(status_code=415, detail="unreadable image")
-    corners = np.float32(req.corners) if req.corners is not None else None
+    corners = None
+    if req.corners is not None:
+        try:
+            corners = np.float32(req.corners)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="malformed corners")
     try:
         res = segment_label(img, barcode_corners=corners)
     except SegmentationError as e:
