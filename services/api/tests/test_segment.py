@@ -158,9 +158,15 @@ def _weights_available() -> bool:
 @pytest.mark.skipif(not _weights_available(), reason="SAM2 checkpoint not downloaded")
 def test_segment_label_real_inference_smoke():
     segment._MODEL_STATE["loaded"] = None
-    img = np.full((256, 256, 3), 200, dtype=np.uint8)
-    corners = np.float32([[80, 80], [180, 80], [180, 160], [80, 160]])
-    result = segment.segment_label(img, barcode_corners=corners)
-    assert result.label_mask.shape == (256, 256)
-    assert result.barcode_mask.shape == (256, 256)
-    assert result.label_mask.dtype == np.uint8
+    try:
+        img = np.full((256, 256, 3), 200, dtype=np.uint8)
+        corners = np.float32([[80, 80], [180, 80], [180, 160], [80, 160]])
+        result = segment.segment_label(img, barcode_corners=corners)
+        assert result.label_mask.shape == (256, 256)
+        assert result.barcode_mask.shape == (256, 256)
+        assert result.label_mask.dtype == np.uint8
+        assert result.barcode_mask.dtype == np.uint8
+        assert result.label_mask.sum() > 0
+        assert result.barcode_mask.sum() > 0
+    finally:
+        segment._MODEL_STATE["loaded"] = None
