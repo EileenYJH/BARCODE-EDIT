@@ -149,3 +149,18 @@ def test_segment_label_raises_when_no_corners_given(monkeypatch):
     img = np.zeros((10, 10, 3), dtype=np.uint8)
     with pytest.raises(segment.SegmentationError, match="barcode_corners"):
         segment.segment_label(img)
+
+
+def _weights_available() -> bool:
+    return segment._checkpoint_path().exists()
+
+
+@pytest.mark.skipif(not _weights_available(), reason="SAM2 checkpoint not downloaded")
+def test_segment_label_real_inference_smoke():
+    segment._MODEL_STATE["loaded"] = None
+    img = np.full((256, 256, 3), 200, dtype=np.uint8)
+    corners = np.float32([[80, 80], [180, 80], [180, 160], [80, 160]])
+    result = segment.segment_label(img, barcode_corners=corners)
+    assert result.label_mask.shape == (256, 256)
+    assert result.barcode_mask.shape == (256, 256)
+    assert result.label_mask.dtype == np.uint8
