@@ -88,3 +88,59 @@ def test_select_label_mask_picks_larger_of_two_qualifying_candidates():
     ]
     selected = segment._select_label_mask(masks, barcode_mask)
     assert np.array_equal(selected, larger_candidate)
+
+
+class _FakePredictor:
+    def set_image(self, img):
+        self.img_shape = img.shape[:2]
+
+    def predict(self, box, multimask_output):
+        h, w = self.img_shape
+        mask = _square_mask(h, w, int(box[0][0]), int(box[0][1]), int(box[0][2]), int(box[0][3]))
+        return np.array([mask.astype(bool)]), np.array([0.9]), None
+
+
+class _FakeMaskGenerator:
+    def __init__(self, extra_masks):
+        self.extra_masks = extra_masks
+
+    def generate(self, img):
+        return self.extra_masks
+
+
+def test_segment_label_returns_full_result(monkeypatch):
+    h, w = 100, 100
+    barcode_box_mask = _square_mask(h, w, 40, 40, 60, 60)
+    label_mask = _square_mask(h, w, 20, 20, 80, 80)
+    other_region = _square_mask(h, w, 25, 60, 35, 70)          # inside label, not barcode
+    outside_region = _square_mask(h, w, 0, 0, 10, 10)          # outside label
+
+    fake_masks = [
+        {"segmentation": label_mask.astype(bool), "area": 3600},
+        {"segmentation": other_region.astype(bool), "area": 100},
+        {"segmentation": outside_region.astype(bool), "area": 100},
+    ]
+
+    monkeypatch.setattr(
+        segment, "_load_model",
+        lambda: (_FakePredictor(), _FakeMaskGenerator(fake_masks)),
+    )
+
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    corners = np.float32([[40, 40], [60, 40], [60, 60], [40, 60]])
+    result = segment.segment_label(img, barcode_corners=corners)
+
+    assert np.array_equal(result.label_mask, label_mask)
+    assert result.barcode_mask.sum() > 0
+    assert len(result.candidate_regions) == 1
+    assert np.array_equal(result.candidate_regions[0], other_region)
+
+
+def test_segment_label_wraps_unexpected_errors(monkeypatch):
+    def _boom():
+        raise RuntimeError("gpu exploded")
+
+    monkeypatch.setattr(segment, "_load_model", _boom)
+    img = np.zeros((10, 10, 3), dtype=np.uint8)
+    with pytest.raises(segment.SegmentationError, match="segmentation failed"):
+        segment.segment_label(img)

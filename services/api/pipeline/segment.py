@@ -111,3 +111,50 @@ def _select_label_mask(masks: List[dict], barcode_mask: np.ndarray) -> np.ndarra
             best, best_area = seg, area
 
     return best if best is not None else barcode_mask.copy()
+
+
+def segment_label(img: np.ndarray, barcode_corners: Optional[np.ndarray] = None) -> SegmentationResult:
+    """Segment the full label boundary, a refined barcode mask, and candidate
+    unclassified sub-regions from a product photo.
+
+    Raises SegmentationError on any failure (missing weights, unsupported
+    environment, or unexpected model error) -- callers should treat this
+    stage as optional and degrade gracefully.
+    """
+    try:
+        predictor, mask_generator = _load_model()
+        predictor.set_image(img)
+
+        h, w = img.shape[:2]
+        if barcode_corners is not None:
+            box = _box_from_corners(np.asarray(barcode_corners, dtype=np.float32))
+            masks, _scores, _logits = predictor.predict(box=box[None, :], multimask_output=False)
+            barcode_mask = (np.asarray(masks[0]) > 0).astype(np.uint8) * 255
+        else:
+            barcode_mask = np.zeros((h, w), dtype=np.uint8)
+
+        auto_masks = mask_generator.generate(img)
+        label_mask = _select_label_mask(auto_masks, barcode_mask)
+
+        candidate_regions: List[np.ndarray] = []
+        for m in auto_masks:
+            seg = (np.asarray(m["segmentation"]).astype(np.uint8)) * 255
+            if np.array_equal(seg, label_mask):
+                continue
+            seg_area = float((seg > 0).sum())
+            if seg_area == 0:
+                continue
+            inside = float(np.logical_and(seg > 0, label_mask > 0).sum())
+            if inside / seg_area < 0.5:
+                continue  # not substantially within the label boundary
+            candidate_regions.append(seg)
+
+        return SegmentationResult(
+            label_mask=label_mask,
+            barcode_mask=barcode_mask,
+            candidate_regions=candidate_regions,
+        )
+    except SegmentationError:
+        raise
+    except Exception as e:
+        raise SegmentationError(f"segmentation failed: {e}") from e
