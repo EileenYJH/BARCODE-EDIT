@@ -76,3 +76,15 @@ def test_select_label_mask_falls_back_to_barcode_mask_when_nothing_encloses_it()
     masks = [{"segmentation": unrelated.astype(bool), "area": 100}]
     selected = segment._select_label_mask(masks, barcode_mask)
     assert np.array_equal(selected, barcode_mask)
+
+
+def test_select_label_mask_picks_larger_of_two_qualifying_candidates():
+    barcode_mask = _square_mask(100, 100, 40, 40, 60, 60)
+    smaller_candidate = _square_mask(100, 100, 30, 30, 70, 70)   # encloses barcode, area 1600
+    larger_candidate = _square_mask(100, 100, 10, 10, 90, 90)    # encloses barcode, area 6400
+    masks = [
+        {"segmentation": smaller_candidate.astype(bool), "area": 1600},
+        {"segmentation": larger_candidate.astype(bool), "area": 6400},
+    ]
+    selected = segment._select_label_mask(masks, barcode_mask)
+    assert np.array_equal(selected, larger_candidate)
