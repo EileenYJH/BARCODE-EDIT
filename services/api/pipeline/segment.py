@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Optional
 import logging
 import os
+import threading
 
 import numpy as np
 
@@ -21,6 +22,7 @@ class SegmentationResult:
 
 
 _MODEL_STATE = {"predictor": None, "mask_generator": None, "device": None}
+_MODEL_LOCK = threading.Lock()
 
 
 def _import_torch():
@@ -46,36 +48,46 @@ def _checkpoint_path() -> Path:
 
 
 def _load_model():
-    """Lazily load and cache the SAM2 predictor + automatic mask generator."""
+    """Lazily load and cache the SAM2 predictor + automatic mask generator.
+
+    Guarded by _MODEL_LOCK with double-checked locking: FastAPI runs sync
+    route handlers in a threadpool, so concurrent first-requests could
+    otherwise race past the "is it loaded yet" check and each trigger their
+    own (wasteful, redundant) model load.
+    """
     if _MODEL_STATE["predictor"] is not None:
         return _MODEL_STATE["predictor"], _MODEL_STATE["mask_generator"]
 
-    checkpoint = _checkpoint_path()
-    if not checkpoint.exists():
-        raise SegmentationError(
-            f"SAM2 checkpoint not found at {checkpoint}. "
-            "Run scripts/download_sam2_checkpoint.py first."
-        )
+    with _MODEL_LOCK:
+        if _MODEL_STATE["predictor"] is not None:
+            return _MODEL_STATE["predictor"], _MODEL_STATE["mask_generator"]
 
-    try:
-        from sam2.build_sam import build_sam2
-        from sam2.sam2_image_predictor import SAM2ImagePredictor
-        from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-    except ImportError as e:
-        raise SegmentationError(f"SAM2/torch not installed: {e}") from e
+        checkpoint = _checkpoint_path()
+        if not checkpoint.exists():
+            raise SegmentationError(
+                f"SAM2 checkpoint not found at {checkpoint}. "
+                "Run scripts/download_sam2_checkpoint.py first."
+            )
 
-    device = _detect_device()
-    try:
-        model = build_sam2("configs/sam2.1/sam2.1_hiera_t.yaml", str(checkpoint), device=device)
-        predictor = SAM2ImagePredictor(model)
-        mask_generator = SAM2AutomaticMaskGenerator(model)
-    except Exception as e:
-        raise SegmentationError(f"failed to load SAM2 model: {e}") from e
+        try:
+            from sam2.build_sam import build_sam2
+            from sam2.sam2_image_predictor import SAM2ImagePredictor
+            from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+        except ImportError as e:
+            raise SegmentationError(f"SAM2/torch not installed: {e}") from e
 
-    _MODEL_STATE["predictor"] = predictor
-    _MODEL_STATE["mask_generator"] = mask_generator
-    _MODEL_STATE["device"] = device
-    return predictor, mask_generator
+        device = _detect_device()
+        try:
+            model = build_sam2("configs/sam2.1/sam2.1_hiera_t.yaml", str(checkpoint), device=device)
+            predictor = SAM2ImagePredictor(model)
+            mask_generator = SAM2AutomaticMaskGenerator(model)
+        except Exception as e:
+            raise SegmentationError(f"failed to load SAM2 model: {e}") from e
+
+        _MODEL_STATE["predictor"] = predictor
+        _MODEL_STATE["mask_generator"] = mask_generator
+        _MODEL_STATE["device"] = device
+        return predictor, mask_generator
 
 
 def _box_from_corners(corners: np.ndarray) -> np.ndarray:
