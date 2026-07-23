@@ -14,4 +14,4 @@ httpx==0.28.1
 # torch CPU wheels are not on PyPI; install with:
 #   pip install torch==2.13.0+cpu --index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0+cpu
-sam2 @ git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4
+git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4
