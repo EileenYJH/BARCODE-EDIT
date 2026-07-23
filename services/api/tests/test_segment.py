@@ -5,8 +5,7 @@ from pipeline import segment
 
 def test_checkpoint_path_missing_raises_segmentation_error(monkeypatch, tmp_path):
     monkeypatch.setenv("SAM2_MODELS_DIR", str(tmp_path))
-    segment._MODEL_STATE["predictor"] = None
-    segment._MODEL_STATE["mask_generator"] = None
+    segment._MODEL_STATE["loaded"] = None
     with pytest.raises(segment.SegmentationError, match="checkpoint not found"):
         segment._load_model()
 

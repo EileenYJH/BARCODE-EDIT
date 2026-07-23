@@ -21,7 +21,7 @@ class SegmentationResult:
     candidate_regions: List[np.ndarray]  # unclassified uint8 masks within the label
 
 
-_MODEL_STATE = {"predictor": None, "mask_generator": None, "device": None}
+_MODEL_STATE = {"loaded": None}  # loaded -> (predictor, mask_generator, device) once ready
 _MODEL_LOCK = threading.Lock()
 
 
@@ -54,13 +54,24 @@ def _load_model():
     route handlers in a threadpool, so concurrent first-requests could
     otherwise race past the "is it loaded yet" check and each trigger their
     own (wasteful, redundant) model load.
+
+    The fully-loaded state is published via a single dict write
+    (_MODEL_STATE["loaded"] = (predictor, mask_generator, device)) so a
+    concurrent reader can never observe a partially-loaded state -- a plain
+    `is not None` sentinel check is only safe as a fast-path guard if the
+    thing being checked is set in one atomic step, not across several
+    separate dict writes.
     """
-    if _MODEL_STATE["predictor"] is not None:
-        return _MODEL_STATE["predictor"], _MODEL_STATE["mask_generator"]
+    loaded = _MODEL_STATE["loaded"]
+    if loaded is not None:
+        predictor, mask_generator, _device = loaded
+        return predictor, mask_generator
 
     with _MODEL_LOCK:
-        if _MODEL_STATE["predictor"] is not None:
-            return _MODEL_STATE["predictor"], _MODEL_STATE["mask_generator"]
+        loaded = _MODEL_STATE["loaded"]
+        if loaded is not None:
+            predictor, mask_generator, _device = loaded
+            return predictor, mask_generator
 
         checkpoint = _checkpoint_path()
         if not checkpoint.exists():
@@ -84,9 +95,7 @@ def _load_model():
         except Exception as e:
             raise SegmentationError(f"failed to load SAM2 model: {e}") from e
 
-        _MODEL_STATE["predictor"] = predictor
-        _MODEL_STATE["mask_generator"] = mask_generator
-        _MODEL_STATE["device"] = device
+        _MODEL_STATE["loaded"] = (predictor, mask_generator, device)
         return predictor, mask_generator
 
 
