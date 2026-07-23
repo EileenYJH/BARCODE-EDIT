@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 services/api/storage/
+services/api/models/
 .DS_Store
 .env
 .env.local
