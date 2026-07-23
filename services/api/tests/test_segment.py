@@ -44,3 +44,9 @@ def test_detect_device_falls_back_to_cpu(monkeypatch):
 
     monkeypatch.setattr(segment, "_import_torch", lambda: FakeTorch())
     assert segment._detect_device() == "cpu"
+
+
+def test_box_from_corners_returns_xyxy():
+    corners = np.float32([[10, 20], [110, 20], [110, 220], [10, 220]])
+    box = segment._box_from_corners(corners)
+    assert box.tolist() == pytest.approx([10.0, 20.0, 110.0, 220.0])

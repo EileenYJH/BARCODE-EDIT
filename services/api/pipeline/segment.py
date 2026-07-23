@@ -76,3 +76,11 @@ def _load_model():
     _MODEL_STATE["mask_generator"] = mask_generator
     _MODEL_STATE["device"] = device
     return predictor, mask_generator
+
+
+def _box_from_corners(corners: np.ndarray) -> np.ndarray:
+    """Convert a (4,2) quad into a SAM2 box prompt [x0, y0, x1, y1]."""
+    corners = np.asarray(corners, dtype=np.float32)
+    x0, y0 = corners.min(axis=0)
+    x1, y1 = corners.max(axis=0)
+    return np.array([x0, y0, x1, y1], dtype=np.float32)
